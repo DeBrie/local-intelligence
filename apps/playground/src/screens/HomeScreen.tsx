@@ -26,14 +26,14 @@ const features = [
         title: 'PII Redaction',
         description: 'Detect and redact personal information',
         screen: 'PIIDemo' as const,
-        available: false,
+        available: true,
     },
     {
         id: 'sentiment',
         title: 'Sentiment Analysis',
         description: 'Analyze text sentiment (positive/negative/neutral)',
         screen: 'SentimentDemo' as const,
-        available: false,
+        available: true,
     },
     {
         id: 'search',
