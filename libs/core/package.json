@@ -1,0 +1,72 @@
+{
+  "name": "@debrie/core",
+  "version": "0.0.1",
+  "description": "Core native engine for @debrie/local-intelligence - JSI/TurboModule runtime, model management, and hardware detection",
+  "main": "lib/commonjs/index.js",
+  "module": "lib/module/index.js",
+  "types": "lib/typescript/src/index.d.ts",
+  "react-native": "src/index.ts",
+  "source": "src/index.ts",
+  "files": [
+    "src",
+    "lib",
+    "ios",
+    "android",
+    "debrie-core.podspec",
+    "!ios/build",
+    "!android/build",
+    "!**/__tests__",
+    "!**/__fixtures__",
+    "!**/__mocks__"
+  ],
+  "scripts": {
+    "build": "bob build",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "react-native",
+    "ios",
+    "android",
+    "ai",
+    "machine-learning",
+    "on-device",
+    "turbomodule",
+    "jsi"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/debrie/local-intelligence.git",
+    "directory": "libs/core"
+  },
+  "author": "Debrie <hello@debrie.dev>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/debrie/local-intelligence/issues"
+  },
+  "homepage": "https://github.com/debrie/local-intelligence#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.76.0"
+  },
+  "devDependencies": {
+    "react-native-builder-bob": "^0.23.0"
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      "commonjs",
+      "module",
+      [
+        "typescript",
+        {
+          "project": "tsconfig.build.json"
+        }
+      ]
+    ]
+  }
+}

@@ -1,0 +1,303 @@
+package com.debrie.core
+
+import android.app.ActivityManager
+import android.content.Context
+import android.os.Build
+import com.facebook.react.bridge.*
+import com.facebook.react.module.annotations.ReactModule
+import com.facebook.react.modules.core.DeviceEventManagerModule
+import kotlinx.coroutines.*
+import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+
+@ReactModule(name = DebrieCoreModule.NAME)
+class DebrieCoreModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
+
+    companion object {
+        const val NAME = "DebrieCore"
+    }
+
+    private var config: CoreConfig? = null
+    private val modelCache = mutableMapOf<String, ModelStatus>()
+    private val activeDownloads = mutableMapOf<String, Job>()
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var listenerCount = 0
+
+    override fun getName(): String = NAME
+
+    @ReactMethod
+    fun initialize(configJson: String, promise: Promise) {
+        try {
+            val json = JSONObject(configJson)
+            config = CoreConfig(
+                modelCacheDir = json.optString("modelCacheDir", null),
+                cdnBaseUrl = json.optString("cdnBaseUrl", "https://cdn.debrie.dev/models"),
+                maxConcurrentDownloads = json.optInt("maxConcurrentDownloads", 2),
+                enableLogging = json.optBoolean("enableLogging", false)
+            )
+            
+            setupCacheDirectory()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("INIT_ERROR", "Failed to initialize: ${e.message}", e)
+        }
+    }
+
+    @ReactMethod
+    fun getDeviceCapabilities(promise: Promise) {
+        try {
+            val capabilities = JSONObject().apply {
+                put("platform", "android")
+                put("osVersion", Build.VERSION.RELEASE)
+                put("hasNPU", checkNNAPIAvailability())
+                put("hasGPU", checkGPUAvailability())
+                put("ramGB", getDeviceRAM())
+                put("supportsFoundationModels", false)
+                put("supportedDelegates", getSupportedDelegates())
+            }
+            promise.resolve(capabilities.toString())
+        } catch (e: Exception) {
+            promise.reject("ENCODE_ERROR", "Failed to encode capabilities", e)
+        }
+    }
+
+    @ReactMethod
+    fun getModelStatus(modelId: String, promise: Promise) {
+        try {
+            val status = when {
+                modelCache.containsKey(modelId) -> modelCache[modelId]!!
+                activeDownloads.containsKey(modelId) -> ModelStatus("downloading", 0.0, null, null, null)
+                else -> {
+                    val path = getModelPath(modelId)
+                    if (path != null && File(path).exists()) {
+                        val size = File(path).length()
+                        ModelStatus("ready", null, size, path, null).also {
+                            modelCache[modelId] = it
+                        }
+                    } else {
+                        ModelStatus("not_downloaded", null, null, null, null)
+                    }
+                }
+            }
+            
+            promise.resolve(status.toJson().toString())
+        } catch (e: Exception) {
+            promise.reject("ENCODE_ERROR", "Failed to encode status", e)
+        }
+    }
+
+    @ReactMethod
+    fun downloadModel(modelId: String, promise: Promise) {
+        val cfg = config
+        if (cfg == null) {
+            promise.reject("NOT_INITIALIZED", "Core not initialized", null)
+            return
+        }
+
+        val job = scope.launch {
+            try {
+                val urlString = "${cfg.cdnBaseUrl}/$modelId/latest/android.tflite"
+                val url = URL(urlString)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connect()
+
+                val totalBytes = connection.contentLength.toLong()
+                val destPath = getModelPath(modelId) ?: throw Exception("Failed to get destination path")
+                val destFile = File(destPath)
+                destFile.parentFile?.mkdirs()
+
+                var bytesDownloaded = 0L
+                val buffer = ByteArray(8192)
+
+                connection.inputStream.use { input ->
+                    FileOutputStream(destFile).use { output ->
+                        var bytesRead: Int
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            bytesDownloaded += bytesRead
+                            
+                            if (listenerCount > 0) {
+                                val progress = if (totalBytes > 0) bytesDownloaded.toDouble() / totalBytes else 0.0
+                                sendDownloadProgress(modelId, bytesDownloaded, totalBytes, progress)
+                            }
+                        }
+                    }
+                }
+
+                val status = ModelStatus("ready", null, destFile.length(), destPath, null)
+                modelCache[modelId] = status
+                activeDownloads.remove(modelId)
+
+                withContext(Dispatchers.Main) {
+                    promise.resolve(JSONObject().put("path", destPath).toString())
+                }
+            } catch (e: Exception) {
+                activeDownloads.remove(modelId)
+                withContext(Dispatchers.Main) {
+                    promise.resolve(JSONObject().put("error", e.message).toString())
+                }
+            }
+        }
+
+        activeDownloads[modelId] = job
+    }
+
+    @ReactMethod
+    fun cancelDownload(modelId: String, promise: Promise) {
+        val job = activeDownloads[modelId]
+        if (job != null) {
+            job.cancel()
+            activeDownloads.remove(modelId)
+            promise.resolve(true)
+        } else {
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
+    fun deleteModel(modelId: String, promise: Promise) {
+        try {
+            val path = getModelPath(modelId)
+            if (path != null && File(path).exists()) {
+                File(path).delete()
+                modelCache.remove(modelId)
+                promise.resolve(true)
+            } else {
+                promise.resolve(false)
+            }
+        } catch (e: Exception) {
+            promise.reject("DELETE_ERROR", "Failed to delete model", e)
+        }
+    }
+
+    @ReactMethod
+    fun clearModelCache(promise: Promise) {
+        try {
+            val cacheDir = getCacheDirectory()
+            if (cacheDir != null) {
+                File(cacheDir).deleteRecursively()
+                File(cacheDir).mkdirs()
+            }
+            modelCache.clear()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("CLEAR_ERROR", "Failed to clear cache", e)
+        }
+    }
+
+    @ReactMethod
+    fun getCacheSize(promise: Promise) {
+        try {
+            val cacheDir = getCacheDirectory()
+            val size = if (cacheDir != null) {
+                File(cacheDir).walkTopDown().filter { it.isFile }.map { it.length() }.sum()
+            } else {
+                0L
+            }
+            promise.resolve(size.toDouble())
+        } catch (e: Exception) {
+            promise.resolve(0.0)
+        }
+    }
+
+    @ReactMethod
+    fun addListener(eventName: String) {
+        listenerCount++
+    }
+
+    @ReactMethod
+    fun removeListeners(count: Int) {
+        listenerCount = maxOf(0, listenerCount - count)
+    }
+
+    private fun sendDownloadProgress(modelId: String, bytesDownloaded: Long, totalBytes: Long, progress: Double) {
+        val params = Arguments.createMap().apply {
+            putString("modelId", modelId)
+            putDouble("bytesDownloaded", bytesDownloaded.toDouble())
+            putDouble("totalBytes", totalBytes.toDouble())
+            putDouble("progress", progress)
+        }
+        
+        reactApplicationContext
+            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit("DebrieDownloadProgress", params)
+    }
+
+    private fun setupCacheDirectory() {
+        val cacheDir = getCacheDirectory()
+        if (cacheDir != null) {
+            File(cacheDir).mkdirs()
+        }
+    }
+
+    private fun getCacheDirectory(): String? {
+        config?.modelCacheDir?.let { return it }
+        return reactApplicationContext.filesDir?.let {
+            File(it, "debrie_models").absolutePath
+        }
+    }
+
+    private fun getModelPath(modelId: String): String? {
+        val cacheDir = getCacheDirectory() ?: return null
+        return File(cacheDir, "$modelId.tflite").absolutePath
+    }
+
+    private fun checkNNAPIAvailability(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1
+    }
+
+    private fun checkGPUAvailability(): Boolean {
+        return true
+    }
+
+    private fun getDeviceRAM(): Double {
+        val activityManager = reactApplicationContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val memInfo = ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(memInfo)
+        return memInfo.totalMem.toDouble() / (1024 * 1024 * 1024)
+    }
+
+    private fun getSupportedDelegates(): org.json.JSONArray {
+        val delegates = org.json.JSONArray()
+        delegates.put("cpu")
+        delegates.put("gpu")
+        if (checkNNAPIAvailability()) {
+            delegates.put("nnapi")
+        }
+        return delegates
+    }
+
+    override fun invalidate() {
+        scope.cancel()
+        super.invalidate()
+    }
+}
+
+data class CoreConfig(
+    val modelCacheDir: String?,
+    val cdnBaseUrl: String,
+    val maxConcurrentDownloads: Int,
+    val enableLogging: Boolean
+)
+
+data class ModelStatus(
+    val state: String,
+    val progress: Double?,
+    val sizeBytes: Long?,
+    val path: String?,
+    val message: String?
+) {
+    fun toJson(): JSONObject {
+        return JSONObject().apply {
+            put("state", state)
+            progress?.let { put("progress", it) }
+            sizeBytes?.let { put("sizeBytes", it) }
+            path?.let { put("path", it) }
+            message?.let { put("message", it) }
+        }
+    }
+}

@@ -1,0 +1,1 @@
+npx nx affected --target=lint --parallel=3

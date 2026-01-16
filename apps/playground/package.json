@@ -1,0 +1,19 @@
+{
+  "name": "@debrie-workspace/playground",
+  "version": "0.0.1",
+  "private": true,
+  "dependencies": {
+    "@debrie/core": "*",
+    "@react-native/metro-config": "*",
+    "@react-navigation/native": "^7.0.0",
+    "@react-navigation/native-stack": "^7.0.0",
+    "react": "*",
+    "react-native": "*",
+    "react-native-safe-area-context": "^5.0.0",
+    "react-native-screens": "^4.0.0",
+    "react-native-svg": "*",
+    "@testing-library/react-native": "*",
+    "react-test-renderer": "*",
+    "metro-config": "*"
+  }
+}
