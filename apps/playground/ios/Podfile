@@ -17,9 +17,6 @@ end
 target 'Playground' do
   config = use_native_modules!
 
-  # Local debrie packages (semantic-search not yet in node_modules)
-  pod 'debrie-semantic-search', :path => '../../../libs/semantic-search'
-
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.
