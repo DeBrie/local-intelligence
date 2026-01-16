@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
     View,
     Text,
@@ -9,8 +9,15 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
-import * as DebrieSentiment from '@debrie/sentiment';
-import type { SentimentResult, SentimentStats } from '@debrie/sentiment';
+import {
+    useSentiment,
+    getStats,
+    resetStats,
+    clearCache,
+    getLabelColor,
+    getLabelEmoji,
+} from '@debrie/sentiment';
+import type { SentimentStats } from '@debrie/sentiment';
 
 const SAMPLE_TEXTS = [
     'I absolutely love this product! It exceeded all my expectations.',
@@ -22,110 +29,66 @@ const SAMPLE_TEXTS = [
 ];
 
 export function SentimentDemoScreen() {
-    const [isInitialized, setIsInitialized] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
     const [inputText, setInputText] = useState(SAMPLE_TEXTS[0]);
-    const [result, setResult] = useState<SentimentResult | null>(null);
     const [stats, setStats] = useState<SentimentStats | null>(null);
-    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        initializeSentiment();
-    }, []);
-
-    const initializeSentiment = async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            await DebrieSentiment.initialize({
-                minConfidence: 0.5,
-                defaultLabel: 'neutral',
-                enableCaching: true,
-                maxCacheSize: 100,
-            });
-            setIsInitialized(true);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to initialize');
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    // Using the useSentiment hook - the recommended way to integrate sentiment analysis
+    const {
+        isInitialized,
+        isLoading,
+        error,
+        result,
+        analyze,
+        reset,
+    } = useSentiment({
+        autoInitialize: true,
+        config: {
+            minConfidence: 0.5,
+            defaultLabel: 'neutral',
+            enableCaching: true,
+            maxCacheSize: 100,
+        },
+    });
 
     const handleAnalyze = async () => {
         if (!inputText.trim()) {
             Alert.alert('Error', 'Please enter some text to analyze');
             return;
         }
-
-        setIsLoading(true);
-        setError(null);
-        try {
-            const sentimentResult = await DebrieSentiment.analyze(inputText);
-            setResult(sentimentResult);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Analysis failed');
-        } finally {
-            setIsLoading(false);
-        }
+        await analyze(inputText);
     };
 
     const handleGetStats = async () => {
         try {
-            const sentimentStats = await DebrieSentiment.getStats();
+            const sentimentStats = await getStats();
             setStats(sentimentStats);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to get stats');
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to get stats');
         }
     };
 
     const handleResetStats = async () => {
         try {
-            await DebrieSentiment.resetStats();
+            await resetStats();
             setStats(null);
             Alert.alert('Success', 'Stats have been reset');
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to reset stats');
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to reset stats');
         }
     };
 
     const handleClearCache = async () => {
         try {
-            await DebrieSentiment.clearCache();
+            await clearCache();
             Alert.alert('Success', 'Cache has been cleared');
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to clear cache');
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to clear cache');
         }
     };
 
     const loadSampleText = (index: number) => {
         setInputText(SAMPLE_TEXTS[index]);
-        setResult(null);
-    };
-
-    const getLabelColor = (label: string): string => {
-        switch (label) {
-            case 'positive':
-                return '#4CAF50';
-            case 'negative':
-                return '#F44336';
-            case 'neutral':
-                return '#9E9E9E';
-            default:
-                return '#9E9E9E';
-        }
-    };
-
-    const getLabelEmoji = (label: string): string => {
-        switch (label) {
-            case 'positive':
-                return '😊';
-            case 'negative':
-                return '😞';
-            case 'neutral':
-                return '😐';
-            default:
-                return '😐';
-        }
+        reset(); // Clear previous results when loading new sample
     };
 
     return (
@@ -204,7 +167,7 @@ export function SentimentDemoScreen() {
 
             {error && (
                 <View style={styles.errorCard}>
-                    <Text style={styles.errorText}>{error}</Text>
+                    <Text style={styles.errorText}>{error.message}</Text>
                 </View>
             )}
 
@@ -346,7 +309,7 @@ export function SentimentDemoScreen() {
                                     <View
                                         style={[
                                             styles.labelBadge,
-                                            { backgroundColor: getLabelColor(label) },
+                                            { backgroundColor: getLabelColor(label as 'positive' | 'negative' | 'neutral') },
                                         ]}
                                     >
                                         <Text style={styles.labelBadgeText}>{label}</Text>

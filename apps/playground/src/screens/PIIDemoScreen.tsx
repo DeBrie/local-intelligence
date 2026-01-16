@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
     View,
     Text,
@@ -9,8 +9,8 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
-import * as DebriePII from '@debrie/pii';
-import type { PIIEntity, RedactionResult, PIIStats } from '@debrie/pii';
+import { useRedactor, getStats, resetStats } from '@debrie/pii';
+import type { PIIEntity, PIIStats } from '@debrie/pii';
 
 const SAMPLE_TEXTS = [
     'Contact John Smith at john.smith@example.com or call 555-123-4567.',
@@ -20,64 +20,43 @@ const SAMPLE_TEXTS = [
 ];
 
 export function PIIDemoScreen() {
-    const [isInitialized, setIsInitialized] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
     const [inputText, setInputText] = useState(SAMPLE_TEXTS[0]);
-    const [result, setResult] = useState<RedactionResult | null>(null);
     const [stats, setStats] = useState<PIIStats | null>(null);
-    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        initializePII();
-    }, []);
-
-    const initializePII = async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            await DebriePII.initialize({
-                enabledTypes: [
-                    'person',
-                    'organization',
-                    'location',
-                    'email',
-                    'phone',
-                    'ssn',
-                    'credit_card',
-                ],
-                redactionChar: '*',
-                minConfidence: 0.7,
-                preserveLength: true,
-            });
-            setIsInitialized(true);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to initialize PII');
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    // Using the useRedactor hook - the recommended way to integrate PII redaction
+    const {
+        isInitialized,
+        isLoading,
+        error,
+        result,
+        detect,
+        redact,
+        reset,
+    } = useRedactor({
+        autoInitialize: true,
+        config: {
+            enabledTypes: [
+                'person',
+                'organization',
+                'location',
+                'address',
+                'email',
+                'phone',
+                'ssn',
+                'credit_card',
+            ],
+            redactionChar: '*',
+            minConfidence: 0.7,
+            preserveLength: true,
+        },
+    });
 
     const handleDetect = async () => {
         if (!inputText.trim()) {
             Alert.alert('Error', 'Please enter some text to analyze');
             return;
         }
-
-        setIsLoading(true);
-        setError(null);
-        try {
-            const entities = await DebriePII.detectEntities(inputText);
-            setResult({
-                originalText: inputText,
-                redactedText: inputText,
-                entities,
-                processingTimeMs: 0,
-            });
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Detection failed');
-        } finally {
-            setIsLoading(false);
-        }
+        await detect(inputText);
     };
 
     const handleRedact = async () => {
@@ -85,41 +64,31 @@ export function PIIDemoScreen() {
             Alert.alert('Error', 'Please enter some text to redact');
             return;
         }
-
-        setIsLoading(true);
-        setError(null);
-        try {
-            const redactionResult = await DebriePII.redact(inputText);
-            setResult(redactionResult);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Redaction failed');
-        } finally {
-            setIsLoading(false);
-        }
+        await redact(inputText);
     };
 
     const handleGetStats = async () => {
         try {
-            const piiStats = await DebriePII.getStats();
+            const piiStats = await getStats();
             setStats(piiStats);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to get stats');
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to get stats');
         }
     };
 
     const handleResetStats = async () => {
         try {
-            await DebriePII.resetStats();
+            await resetStats();
             setStats(null);
             Alert.alert('Success', 'Stats have been reset');
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to reset stats');
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to reset stats');
         }
     };
 
     const loadSampleText = (index: number) => {
         setInputText(SAMPLE_TEXTS[index]);
-        setResult(null);
+        reset(); // Clear previous results when loading new sample
     };
 
     const getEntityColor = (type: string): string => {
@@ -219,7 +188,7 @@ export function PIIDemoScreen() {
 
             {error && (
                 <View style={styles.errorCard}>
-                    <Text style={styles.errorText}>{error}</Text>
+                    <Text style={styles.errorText}>{error.message}</Text>
                 </View>
             )}
 
