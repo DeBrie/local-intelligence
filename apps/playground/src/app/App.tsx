@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { HomeScreen, CoreDemoScreen } from '../screens';
+import { HomeScreen, CoreDemoScreen, PIIDemoScreen } from '../screens';
 
 export type RootStackParamList = {
     Home: undefined;
@@ -40,6 +40,11 @@ export function App() {
                         name="CoreDemo"
                         component={CoreDemoScreen}
                         options={{ title: 'Core Demo' }}
+                    />
+                    <Stack.Screen
+                        name="PIIDemo"
+                        component={PIIDemoScreen}
+                        options={{ title: 'PII Redaction' }}
                     />
                 </Stack.Navigator>
             </NavigationContainer>

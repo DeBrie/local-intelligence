@@ -5,4 +5,6 @@ rootProject.name = 'Playground'
 include ':app'
 include ':debrie-core'
 project(':debrie-core').projectDir = new File(rootProject.projectDir, '../../../libs/core/android')
+include ':debrie-pii'
+project(':debrie-pii').projectDir = new File(rootProject.projectDir, '../../../libs/pii/android')
 includeBuild('../../../node_modules/@react-native/gradle-plugin')

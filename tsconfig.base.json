@@ -20,7 +20,9 @@
     "customConditions": ["@debrie-workspace/source"],
     "paths": {
       "@debrie/core": ["libs/core/src/index.ts"],
-      "@debrie/core/*": ["libs/core/src/*"]
+      "@debrie/core/*": ["libs/core/src/*"],
+      "@debrie/pii": ["libs/pii/src/index.ts"],
+      "@debrie/pii/*": ["libs/pii/src/*"]
     }
   }
 }
