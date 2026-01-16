@@ -89,6 +89,13 @@ export function useRedactor(
         const detectedEntities = await detectEntities(text);
         if (mountedRef.current) {
           setEntities(detectedEntities);
+          // Also set result so UI can display entities via result.entities
+          setResult({
+            originalText: text,
+            redactedText: text,
+            entities: detectedEntities,
+            processingTimeMs: 0,
+          });
         }
         return detectedEntities;
       } catch (err) {
