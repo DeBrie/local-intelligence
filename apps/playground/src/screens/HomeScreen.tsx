@@ -40,7 +40,7 @@ const features = [
         title: 'Semantic Search',
         description: 'Vector embeddings and similarity search',
         screen: 'SearchDemo' as const,
-        available: false,
+        available: true,
     },
     {
         id: 'chat',

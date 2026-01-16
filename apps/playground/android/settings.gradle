@@ -9,4 +9,6 @@ include ':debrie-pii'
 project(':debrie-pii').projectDir = new File(rootProject.projectDir, '../../../libs/pii/android')
 include ':debrie-sentiment'
 project(':debrie-sentiment').projectDir = new File(rootProject.projectDir, '../../../libs/sentiment/android')
+include ':debrie-semantic-search'
+project(':debrie-semantic-search').projectDir = new File(rootProject.projectDir, '../../../libs/semantic-search/android')
 includeBuild('../../../node_modules/@react-native/gradle-plugin')

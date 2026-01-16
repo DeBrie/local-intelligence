@@ -14,6 +14,7 @@ import com.facebook.soloader.SoLoader
 import com.debrie.core.DebrieCorePackage
 import com.debrie.pii.DebriePIIPackage
 import com.debrie.sentiment.DebrieSentimentPackage
+import com.debrie.semanticsearch.DebrieSemanticSearchPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -25,6 +26,7 @@ class MainApplication : Application(), ReactApplication {
               add(DebrieCorePackage())
               add(DebriePIIPackage())
               add(DebrieSentimentPackage())
+              add(DebrieSemanticSearchPackage())
             }
 
         override fun getJSMainModuleName(): String = "src/main"

@@ -115,6 +115,7 @@ dependencies {
     implementation project(':debrie-core')
     implementation project(':debrie-pii')
     implementation project(':debrie-sentiment')
+    implementation project(':debrie-semantic-search')
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

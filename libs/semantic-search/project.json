@@ -1,0 +1,25 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "semantic-search",
+  "sourceRoot": "libs/semantic-search/src",
+  "projectType": "library",
+  "tags": ["scope:lib", "type:feature"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "libs/semantic-search/lib",
+        "main": "libs/semantic-search/src/index.ts",
+        "tsConfig": "libs/semantic-search/tsconfig.build.json"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "libs/semantic-search"
+      }
+    }
+  }
+}

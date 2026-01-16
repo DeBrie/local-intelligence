@@ -32,5 +32,6 @@ module.exports = withNxMetro(mergeConfig(defaultConfig, customConfig), {
     require('path').resolve(__dirname, '../../libs/core'),
     require('path').resolve(__dirname, '../../libs/pii'),
     require('path').resolve(__dirname, '../../libs/sentiment'),
+    require('path').resolve(__dirname, '../../libs/semantic-search'),
   ],
 });

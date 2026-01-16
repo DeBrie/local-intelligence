@@ -24,7 +24,9 @@
       "@debrie/pii": ["libs/pii/src/index.ts"],
       "@debrie/pii/*": ["libs/pii/src/*"],
       "@debrie/sentiment": ["libs/sentiment/src/index.ts"],
-      "@debrie/sentiment/*": ["libs/sentiment/src/*"]
+      "@debrie/sentiment/*": ["libs/sentiment/src/*"],
+      "@debrie/semantic-search": ["libs/semantic-search/src/index.ts"],
+      "@debrie/semantic-search/*": ["libs/semantic-search/src/*"]
     }
   }
 }
