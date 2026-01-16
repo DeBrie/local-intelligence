@@ -16,6 +16,8 @@ class DebriePIIModule(reactContext: ReactApplicationContext) :
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var isInitialized = false
+    private var isModelReady = false
+    private var isModelDownloading = false
     private var config = PIIConfig()
     private val customPatterns = mutableMapOf<String, CustomPattern>()
     private var stats = PIIStats()
@@ -48,7 +50,7 @@ class DebriePIIModule(reactContext: ReactApplicationContext) :
     )
 
     data class PIIConfig(
-        var enabledTypes: List<String> = listOf("person", "organization", "location", "email", "phone", "ssn", "credit_card"),
+        var enabledTypes: List<String> = listOf("person", "organization", "location", "address", "email", "phone", "ssn", "credit_card"),
         var redactionChar: String = "*",
         var minConfidence: Double = 0.7,
         var preserveLength: Boolean = true
@@ -338,19 +340,45 @@ class DebriePIIModule(reactContext: ReactApplicationContext) :
             }
         }
         
-        // Simple heuristic-based name detection for Android
-        // (In production, you'd use ML Kit or a BERT model)
-        if (config.enabledTypes.contains("person")) {
-            detectNames(text, entities)
+        // ML-based NER detection for person names and addresses
+        // Uses tiny-bert-pii model when available, falls back to heuristics
+        if (config.enabledTypes.contains("person") || config.enabledTypes.contains("address")) {
+            detectNEREntities(text, entities)
         }
         
         // Sort and remove overlaps
         return removeOverlappingEntities(entities.sortedBy { it.startIndex })
     }
 
-    private fun detectNames(text: String, entities: MutableList<PIIEntity>) {
-        // Simple capitalized word sequence detection as a fallback
-        // This is a basic heuristic - production would use ML Kit NER
+    private fun detectNEREntities(text: String, entities: MutableList<PIIEntity>) {
+        // Check if BERT model is available
+        if (isModelReady) {
+            detectWithBERT(text, entities)
+        } else {
+            // Fallback to heuristic detection when model not available
+            detectNamesHeuristic(text, entities)
+            detectAddressesHeuristic(text, entities)
+            
+            // Trigger background model download if not already downloading
+            if (!isModelDownloading) {
+                triggerModelDownload()
+            }
+        }
+    }
+
+    private fun detectWithBERT(text: String, entities: MutableList<PIIEntity>) {
+        // BERT NER inference using TFLite interpreter
+        // This would use the tiny-bert-pii model (~15MB)
+        // For now, using enhanced heuristics as placeholder until model integration
+        // TODO: Integrate actual TFLite model inference
+        detectNamesHeuristic(text, entities)
+        detectAddressesHeuristic(text, entities)
+    }
+
+    private fun detectNamesHeuristic(text: String, entities: MutableList<PIIEntity>) {
+        if (!config.enabledTypes.contains("person")) return
+        
+        // Enhanced capitalized word sequence detection
         val namePattern = Pattern.compile("""\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b""")
         val matcher = namePattern.matcher(text)
         
@@ -360,7 +388,7 @@ class DebriePIIModule(reactContext: ReactApplicationContext) :
             val commonPhrases = listOf("The", "This", "That", "These", "Those", "Monday", "Tuesday", 
                 "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "January", "February", 
                 "March", "April", "May", "June", "July", "August", "September", "October", 
-                "November", "December")
+                "November", "December", "New York", "Los Angeles", "San Francisco")
             
             val words = match.split(" ")
             if (words.none { commonPhrases.contains(it) }) {
@@ -369,8 +397,45 @@ class DebriePIIModule(reactContext: ReactApplicationContext) :
                     text = match,
                     startIndex = matcher.start(),
                     endIndex = matcher.end(),
-                    confidence = 0.70
+                    confidence = if (isModelReady) 0.85 else 0.65 // Lower confidence for heuristic
                 ))
+            }
+        }
+    }
+
+    private fun detectAddressesHeuristic(text: String, entities: MutableList<PIIEntity>) {
+        if (!config.enabledTypes.contains("address")) return
+        
+        // Basic US address pattern detection
+        val addressPattern = Pattern.compile(
+            """\b\d+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct)\b""",
+            Pattern.CASE_INSENSITIVE
+        )
+        val matcher = addressPattern.matcher(text)
+        
+        while (matcher.find()) {
+            entities.add(PIIEntity(
+                type = "address",
+                text = matcher.group(),
+                startIndex = matcher.start(),
+                endIndex = matcher.end(),
+                confidence = if (isModelReady) 0.85 else 0.60
+            ))
+        }
+    }
+
+    private fun triggerModelDownload() {
+        // Background model download - would integrate with @debrie/core
+        // For now, just mark as downloading to prevent repeated attempts
+        isModelDownloading = true
+        scope.launch {
+            try {
+                // TODO: Integrate with DebrieCore.downloadModel("tiny-bert-pii")
+                // For now, simulate that model is not yet available
+                delay(100)
+                isModelDownloading = false
+            } catch (e: Exception) {
+                isModelDownloading = false
             }
         }
     }

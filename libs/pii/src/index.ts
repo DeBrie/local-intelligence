@@ -12,6 +12,8 @@ export {
   getConfig,
 } from './DebriePII';
 
+export { useRedactor } from './useRedactor';
+
 export type {
   PIIEntityType,
   PIIEntity,
@@ -21,3 +23,9 @@ export type {
   PIIStats,
 } from './types';
 export type { PIIEventCallback } from './DebriePII';
+export type {
+  UseRedactorOptions,
+  UseRedactorState,
+  UseRedactorActions,
+  UseRedactorReturn,
+} from './useRedactor';

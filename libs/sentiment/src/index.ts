@@ -12,6 +12,8 @@ export {
   getLabelColor,
 } from './DebrieSentiment';
 
+export { useSentiment } from './useSentiment';
+
 export type {
   SentimentLabel,
   SentimentResult,
@@ -22,3 +24,10 @@ export type {
 } from './types';
 
 export type { SentimentEventCallback } from './DebrieSentiment';
+
+export type {
+  UseSentimentOptions,
+  UseSentimentState,
+  UseSentimentActions,
+  UseSentimentReturn,
+} from './useSentiment';
