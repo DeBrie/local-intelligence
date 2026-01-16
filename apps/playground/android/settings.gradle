@@ -7,4 +7,6 @@ include ':debrie-core'
 project(':debrie-core').projectDir = new File(rootProject.projectDir, '../../../libs/core/android')
 include ':debrie-pii'
 project(':debrie-pii').projectDir = new File(rootProject.projectDir, '../../../libs/pii/android')
+include ':debrie-sentiment'
+project(':debrie-sentiment').projectDir = new File(rootProject.projectDir, '../../../libs/sentiment/android')
 includeBuild('../../../node_modules/@react-native/gradle-plugin')

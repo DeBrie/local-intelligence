@@ -13,6 +13,7 @@ import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 import com.debrie.core.DebrieCorePackage
 import com.debrie.pii.DebriePIIPackage
+import com.debrie.sentiment.DebrieSentimentPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -23,6 +24,7 @@ class MainApplication : Application(), ReactApplication {
               // Packages that cannot be autolinked yet can be added manually here, for example:
               add(DebrieCorePackage())
               add(DebriePIIPackage())
+              add(DebrieSentimentPackage())
             }
 
         override fun getJSMainModuleName(): String = "src/main"

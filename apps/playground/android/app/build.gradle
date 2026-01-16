@@ -114,6 +114,7 @@ dependencies {
     // Local libraries
     implementation project(':debrie-core')
     implementation project(':debrie-pii')
+    implementation project(':debrie-sentiment')
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

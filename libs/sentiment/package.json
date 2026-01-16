@@ -1,0 +1,73 @@
+{
+  "name": "@debrie/sentiment",
+  "version": "0.0.1",
+  "description": "On-device sentiment analysis for React Native - 3-class classification with batch processing",
+  "main": "lib/commonjs/index.js",
+  "module": "lib/module/index.js",
+  "types": "lib/typescript/src/index.d.ts",
+  "react-native": "src/index.ts",
+  "source": "src/index.ts",
+  "files": [
+    "src",
+    "lib",
+    "ios",
+    "android",
+    "debrie-sentiment.podspec",
+    "!ios/build",
+    "!android/build",
+    "!**/__tests__",
+    "!**/__fixtures__",
+    "!**/__mocks__"
+  ],
+  "scripts": {
+    "build": "bob build",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "react-native",
+    "ios",
+    "android",
+    "sentiment",
+    "nlp",
+    "text-analysis",
+    "on-device",
+    "machine-learning"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/debrie/local-intelligence.git",
+    "directory": "libs/sentiment"
+  },
+  "author": "Debrie <hello@debrie.dev>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/debrie/local-intelligence/issues"
+  },
+  "homepage": "https://github.com/debrie/local-intelligence#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@debrie/core": ">=0.0.1",
+    "react": ">=18.0.0",
+    "react-native": ">=0.76.0"
+  },
+  "devDependencies": {
+    "react-native-builder-bob": "^0.23.0"
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      "commonjs",
+      "module",
+      [
+        "typescript",
+        {
+          "project": "tsconfig.build.json"
+        }
+      ]
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "sentiment",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/sentiment/src",
+  "projectType": "library",
+  "tags": ["scope:sentiment", "type:lib"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npm run build",
+        "cwd": "libs/sentiment"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npm run typecheck",
+        "cwd": "libs/sentiment"
+      }
+    }
+  }
+}

@@ -31,5 +31,6 @@ module.exports = withNxMetro(mergeConfig(defaultConfig, customConfig), {
   watchFolders: [
     require('path').resolve(__dirname, '../../libs/core'),
     require('path').resolve(__dirname, '../../libs/pii'),
+    require('path').resolve(__dirname, '../../libs/sentiment'),
   ],
 });

@@ -22,7 +22,9 @@
       "@debrie/core": ["libs/core/src/index.ts"],
       "@debrie/core/*": ["libs/core/src/*"],
       "@debrie/pii": ["libs/pii/src/index.ts"],
-      "@debrie/pii/*": ["libs/pii/src/*"]
+      "@debrie/pii/*": ["libs/pii/src/*"],
+      "@debrie/sentiment": ["libs/sentiment/src/index.ts"],
+      "@debrie/sentiment/*": ["libs/sentiment/src/*"]
     }
   }
 }
