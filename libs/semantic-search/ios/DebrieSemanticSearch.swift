@@ -1,6 +1,7 @@
 import Foundation
 import NaturalLanguage
 import CoreML
+import React
 
 @objc(DebrieSemanticSearch)
 class DebrieSemanticSearch: NSObject {
