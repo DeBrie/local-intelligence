@@ -2,8 +2,10 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "declaration": true,
-    "declarationDir": "./lib/typescript"
+    "outDir": "./lib/typescript",
+    "rootDir": "./src"
   },
+  "include": ["src"],
   "exclude": [
     "node_modules",
     "lib",

@@ -4,7 +4,7 @@
   "description": "Core native engine for local-intelligence - JSI/TurboModule runtime, model management, and hardware detection",
   "main": "lib/commonjs/index.js",
   "module": "lib/module/index.js",
-  "types": "lib/typescript/src/index.d.ts",
+  "types": "lib/typescript/index.d.ts",
   "react-native": "src/index.ts",
   "source": "src/index.ts",
   "files": [
