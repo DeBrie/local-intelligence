@@ -85,19 +85,21 @@ export class SemanticIndex {
     }
 
     const embeddingResult = await generateEmbedding(text);
-    const embeddingBlob = new Float32Array(embeddingResult.embedding).buffer;
+    // Store embedding as JSON string for the main table
+    const embeddingJson = JSON.stringify(embeddingResult.embedding);
     const metadataJson = options.metadata
       ? JSON.stringify(options.metadata)
       : null;
 
     await this.db.execute(
       `INSERT OR REPLACE INTO ${this.tableName} (id, text, embedding, metadata) VALUES (?, ?, ?, ?)`,
-      [id, text, embeddingBlob, metadataJson],
+      [id, text, embeddingJson, metadataJson],
     );
 
+    // For sqlite-vec, pass the embedding array as a JSON string
     await this.db.execute(
       `INSERT OR REPLACE INTO ${this.tableName}_vec (id, embedding) VALUES (?, ?)`,
-      [id, embeddingResult.embedding],
+      [id, JSON.stringify(embeddingResult.embedding)],
     );
   }
 
@@ -132,19 +134,21 @@ export class SemanticIndex {
         }
       }
 
-      const embeddingBlob = new Float32Array(embedding).buffer;
+      // Store embedding as JSON string for the main table
+      const embeddingJson = JSON.stringify(embedding);
       const metadataJson = entry.metadata
         ? JSON.stringify(entry.metadata)
         : null;
 
       await this.db.execute(
         `INSERT OR REPLACE INTO ${this.tableName} (id, text, embedding, metadata) VALUES (?, ?, ?, ?)`,
-        [entry.id, entry.text, embeddingBlob, metadataJson],
+        [entry.id, entry.text, embeddingJson, metadataJson],
       );
 
+      // For sqlite-vec, pass the embedding array as a JSON string
       await this.db.execute(
         `INSERT OR REPLACE INTO ${this.tableName}_vec (id, embedding) VALUES (?, ?)`,
-        [entry.id, embedding],
+        [entry.id, JSON.stringify(embedding)],
       );
 
       added++;
@@ -163,12 +167,13 @@ export class SemanticIndex {
 
     const queryEmbedding = await generateEmbedding(query);
 
+    // Pass embedding as JSON string for sqlite-vec
     const vecResults = await this.db.execute(
       `SELECT id, distance FROM ${this.tableName}_vec 
        WHERE embedding MATCH ? 
        ORDER BY distance 
        LIMIT ?`,
-      [queryEmbedding.embedding, limit * 2],
+      [JSON.stringify(queryEmbedding.embedding), limit * 2],
     );
 
     const results: SearchResult[] = [];
