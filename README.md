@@ -45,13 +45,15 @@ On-device AI for React Native — privacy-first, hardware-accelerated machine le
 
 ## Packages
 
-| Package                               | Description                                         | Status     |
-| ------------------------------------- | --------------------------------------------------- | ---------- |
-| `@local-intelligence/core`            | Native engine, model management, hardware detection | ✅ MVP     |
-| `@local-intelligence/pii`             | PII redaction with NLTagger (iOS) / BERT (Android)  | ✅ MVP     |
-| `@local-intelligence/sentiment`       | 3-class sentiment analysis with batch processing    | ✅ MVP     |
-| `@local-intelligence/semantic-search` | Text embeddings + vector storage (sqlite-vec)       | ✅ MVP     |
-| `@local-intelligence/chat`            | On-device LLM (Foundation Models / ExecuTorch)      | 🚧 Planned |
+| Package                               | Description                                         | Size    | Dependencies | Status     |
+| ------------------------------------- | --------------------------------------------------- | ------- | ------------ | ---------- |
+| `@local-intelligence/core`            | Native engine, model management, hardware detection | 9.1 kB  | 0            | ✅ MVP     |
+| `@local-intelligence/pii`             | PII redaction with NLTagger (iOS) / BERT (Android)  | 11.1 kB | 0            | ✅ MVP     |
+| `@local-intelligence/sentiment`       | 3-class sentiment analysis with batch processing    | 9.2 kB  | 0            | ✅ MVP     |
+| `@local-intelligence/semantic-search` | Text embeddings + vector storage (sqlite-vec)       | 10.5 kB | 0            | ✅ MVP     |
+| `@local-intelligence/chat`            | On-device LLM (Foundation Models / ExecuTorch)      | -       | -            | 🚧 Planned |
+
+> **Zero runtime dependencies** — all packages rely solely on React Native's native runtime and platform ML frameworks (Core ML, NLTagger, LiteRT). No bloated JS dependencies.
 
 ## Getting Started
 
