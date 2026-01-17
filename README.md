@@ -7,9 +7,9 @@ On-device AI for React Native — privacy-first, hardware-accelerated machine le
 | Package                   | Description                                         | Status     |
 | ------------------------- | --------------------------------------------------- | ---------- |
 | `@debrie/core`            | Native engine, model management, hardware detection | ✅ MVP     |
-| `@debrie/pii`             | PII redaction with NLTagger (iOS) / BERT (Android)  | 🚧 Planned |
-| `@debrie/sentiment`       | 3-class sentiment analysis with batch processing    | 🚧 Planned |
-| `@debrie/semantic-search` | Text embeddings + vector storage (sqlite-vec)       | 🚧 Planned |
+| `@debrie/pii`             | PII redaction with NLTagger (iOS) / BERT (Android)  | ✅ MVP     |
+| `@debrie/sentiment`       | 3-class sentiment analysis with batch processing    | ✅ MVP     |
+| `@debrie/semantic-search` | Text embeddings + vector storage (sqlite-vec)       | ✅ MVP     |
 | `@debrie/chat`            | On-device LLM (Foundation Models / ExecuTorch)      | 🚧 Planned |
 
 ## Getting Started
