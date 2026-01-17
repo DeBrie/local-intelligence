@@ -86,5 +86,9 @@
   "workspaces": [
     "apps/*",
     "libs/*"
-  ]
+  ],
+  "op-sqlite": {
+    "sqliteVec": true,
+    "fts5": true
+  }
 }
