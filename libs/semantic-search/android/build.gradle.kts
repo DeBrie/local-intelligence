@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.debrie.semanticsearch"
+    namespace = "com.localintelligence.semanticsearch"
     compileSdk = 34
 
     defaultConfig {

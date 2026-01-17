@@ -9,7 +9,7 @@ plugins {
 val reactNativeDir = file("$projectDir/../../../node_modules/react-native")
 
 android {
-    namespace = "com.debrie.core"
+    namespace = "com.localintelligence.core"
     compileSdk = 34
 
     defaultConfig {

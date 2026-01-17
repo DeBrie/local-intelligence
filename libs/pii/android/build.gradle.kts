@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.debrie.pii"
+    namespace = "com.localintelligence.pii"
     compileSdk = 34
 
     defaultConfig {

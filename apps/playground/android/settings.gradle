@@ -3,12 +3,12 @@ plugins { id("com.facebook.react.settings") }
 extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
 rootProject.name = 'Playground'
 include ':app'
-include ':debrie-core'
-project(':debrie-core').projectDir = new File(rootProject.projectDir, '../../../libs/core/android')
-include ':debrie-pii'
-project(':debrie-pii').projectDir = new File(rootProject.projectDir, '../../../libs/pii/android')
-include ':debrie-sentiment'
-project(':debrie-sentiment').projectDir = new File(rootProject.projectDir, '../../../libs/sentiment/android')
-include ':debrie-semantic-search'
-project(':debrie-semantic-search').projectDir = new File(rootProject.projectDir, '../../../libs/semantic-search/android')
+include ':local-intelligence-core'
+project(':local-intelligence-core').projectDir = new File(rootProject.projectDir, '../../../libs/core/android')
+include ':local-intelligence-pii'
+project(':local-intelligence-pii').projectDir = new File(rootProject.projectDir, '../../../libs/pii/android')
+include ':local-intelligence-sentiment'
+project(':local-intelligence-sentiment').projectDir = new File(rootProject.projectDir, '../../../libs/sentiment/android')
+include ':local-intelligence-semantic-search'
+project(':local-intelligence-semantic-search').projectDir = new File(rootProject.projectDir, '../../../libs/semantic-search/android')
 includeBuild('../../../node_modules/@react-native/gradle-plugin')

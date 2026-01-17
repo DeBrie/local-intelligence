@@ -112,10 +112,10 @@ dependencies {
     implementation("com.facebook.react:react-android")
 
     // Local libraries
-    implementation project(':debrie-core')
-    implementation project(':debrie-pii')
-    implementation project(':debrie-sentiment')
-    implementation project(':debrie-semantic-search')
+    implementation project(':local-intelligence-core')
+    implementation project(':local-intelligence-pii')
+    implementation project(':local-intelligence-sentiment')
+    implementation project(':local-intelligence-semantic-search')
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

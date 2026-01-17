@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.debrie.sentiment"
+    namespace = "com.localintelligence.sentiment"
     compileSdk = 34
 
     defaultConfig {
