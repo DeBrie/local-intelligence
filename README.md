@@ -152,4 +152,4 @@ git commit -m "docs(workspace): update README"
 
 ## License
 
-MIT © [Local Intelligence](https://github.com/anthropics/local-intelligence)
+MIT © [Local Intelligence](https://github.com/debrie/local-intelligence)

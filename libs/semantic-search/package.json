@@ -30,13 +30,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anthropics/local-intelligence.git",
+    "url": "https://github.com/debrie/local-intelligence.git",
     "directory": "libs/semantic-search"
   },
   "bugs": {
-    "url": "https://github.com/anthropics/local-intelligence/issues"
+    "url": "https://github.com/debrie/local-intelligence/issues"
   },
-  "homepage": "https://github.com/anthropics/local-intelligence#readme",
+  "homepage": "https://github.com/debrie/local-intelligence#readme",
   "peerDependencies": {
     "@local-intelligence/core": "*",
     "@op-engineering/op-sqlite": ">=7.0.0",
