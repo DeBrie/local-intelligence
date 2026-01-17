@@ -22,7 +22,12 @@ const customConfig = {
   resolver: {
     assetExts: assetExts.filter((ext) => ext !== 'svg'),
     sourceExts: [...sourceExts, 'cjs', 'mjs', 'svg'],
-    // Ensure all libs use the same React instance from the app
+    // Block any react/react-native from libs to prevent duplicate instances
+    blockList: [
+      /libs\/.*\/node_modules\/react\//,
+      /libs\/.*\/node_modules\/react-native\//,
+    ],
+    // Ensure all libs use the same React instance from workspace root
     extraNodeModules: {
       react: path.resolve(workspaceRoot, 'node_modules/react'),
       'react-native': path.resolve(workspaceRoot, 'node_modules/react-native'),

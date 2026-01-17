@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     View,
     Text,
@@ -11,8 +11,9 @@ import {
 } from 'react-native';
 import {
     initialize,
-    useSemanticSearch,
+    SemanticIndex,
 } from '@debrie/semantic-search';
+import type { SearchResult, IndexStats } from '@debrie/semantic-search';
 
 const SAMPLE_DOCUMENTS = [
     { id: '1', text: 'React Native is a framework for building mobile apps using JavaScript and React.' },
@@ -37,36 +38,17 @@ const DB_NAME = 'semantic_search_demo.db';
 export function SemanticSearchDemoScreen() {
     const [queryText, setQueryText] = useState(SAMPLE_QUERIES[0]);
     const [indexedCount, setIndexedCount] = useState(0);
+    const [isInitialized, setIsInitialized] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [results, setResults] = useState<SearchResult[]>([]);
+    const [stats, setStats] = useState<IndexStats | null>(null);
 
-    const {
-        isInitialized,
-        isLoading,
-        error,
-        results,
-        stats,
-        initialize: initIndex,
-        search,
-        addBatch,
-        clear,
-        getStats,
-        reset,
-    } = useSemanticSearch({
-        autoInitialize: false,
-        indexOptions: {
-            databasePath: DB_NAME,
-            tableName: 'documents',
-            embeddingDimensions: 512, // NLEmbedding uses 512 dimensions
-        },
-    });
-
-    useEffect(() => {
-        if (isInitialized) {
-            getStats().then((s) => setIndexedCount(s.totalEntries));
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isInitialized]);
+    const indexRef = useRef<SemanticIndex | null>(null);
 
     const handleInitialize = async () => {
+        setIsLoading(true);
+        setError(null);
         try {
             // First initialize the embedding model
             await initialize({
@@ -75,27 +57,47 @@ export function SemanticSearchDemoScreen() {
             });
 
             // Then initialize the semantic index (sqlite-vec)
-            await initIndex();
+            const index = new SemanticIndex({
+                databasePath: DB_NAME,
+                tableName: 'documents',
+                embeddingDimensions: 512,
+            });
+            await index.initialize();
+            indexRef.current = index;
+
+            const indexStats = await index.getStats();
+            setStats(indexStats);
+            setIndexedCount(indexStats.totalEntries);
+            setIsInitialized(true);
 
             Alert.alert('Success', 'Semantic search initialized with sqlite-vec');
         } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to initialize');
             Alert.alert('Error', err instanceof Error ? err.message : 'Failed to initialize');
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const handleIndexDocuments = async () => {
-        if (!isInitialized) {
+        if (!indexRef.current) {
             Alert.alert('Error', 'Please initialize first');
             return;
         }
 
+        setIsLoading(true);
+        setError(null);
         try {
-            const result = await addBatch(SAMPLE_DOCUMENTS);
+            const result = await indexRef.current.addBatch(SAMPLE_DOCUMENTS);
             setIndexedCount(result.added);
-            await getStats();
+            const indexStats = await indexRef.current.getStats();
+            setStats(indexStats);
             Alert.alert('Success', `Indexed ${result.added} documents to sqlite-vec`);
         } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to index documents');
             Alert.alert('Error', err instanceof Error ? err.message : 'Failed to index documents');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -105,27 +107,46 @@ export function SemanticSearchDemoScreen() {
             return;
         }
 
+        if (!indexRef.current) {
+            Alert.alert('Error', 'Please initialize first');
+            return;
+        }
+
+        setIsLoading(true);
+        setError(null);
         try {
-            await search(queryText, { limit: 5, minSimilarity: 0.1 });
+            const searchResults = await indexRef.current.search(queryText, { limit: 5, minSimilarity: 0.1 });
+            setResults(searchResults);
         } catch (err) {
+            setError(err instanceof Error ? err.message : 'Search failed');
             Alert.alert('Error', err instanceof Error ? err.message : 'Search failed');
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const handleClear = async () => {
+        if (!indexRef.current) {
+            return;
+        }
+
+        setIsLoading(true);
         try {
-            await clear();
+            await indexRef.current.clear();
             setIndexedCount(0);
-            reset();
+            setResults([]);
+            setStats(null);
             Alert.alert('Success', 'Index cleared');
         } catch (err) {
             Alert.alert('Error', err instanceof Error ? err.message : 'Failed to clear index');
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const loadSampleQuery = (index: number) => {
         setQueryText(SAMPLE_QUERIES[index]);
-        reset();
+        setResults([]);
     };
 
     const getSimilarityColor = (similarity: number): string => {
@@ -263,7 +284,7 @@ export function SemanticSearchDemoScreen() {
 
             {error && (
                 <View style={styles.errorCard}>
-                    <Text style={styles.errorText}>{error.message}</Text>
+                    <Text style={styles.errorText}>{error}</Text>
                 </View>
             )}
 
