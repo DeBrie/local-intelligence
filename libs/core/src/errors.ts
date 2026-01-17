@@ -1,14 +1,14 @@
-export class DebrieError extends Error {
+export class LocalIntelligenceError extends Error {
   code: string;
 
   constructor(message: string, code: string) {
     super(message);
-    this.name = 'DebrieError';
+    this.name = 'LocalIntelligenceError';
     this.code = code;
   }
 }
 
-export class ModelNotFoundError extends DebrieError {
+export class ModelNotFoundError extends LocalIntelligenceError {
   modelId: string;
 
   constructor(modelId: string) {
@@ -18,7 +18,7 @@ export class ModelNotFoundError extends DebrieError {
   }
 }
 
-export class ModelDownloadError extends DebrieError {
+export class ModelDownloadError extends LocalIntelligenceError {
   modelId: string;
   override cause: Error;
 
@@ -30,7 +30,7 @@ export class ModelDownloadError extends DebrieError {
   }
 }
 
-export class HardwareNotSupportedError extends DebrieError {
+export class HardwareNotSupportedError extends LocalIntelligenceError {
   reason: string;
   ramGB: number;
   hasNPU: boolean;
@@ -44,7 +44,7 @@ export class HardwareNotSupportedError extends DebrieError {
   }
 }
 
-export class InferenceError extends DebrieError {
+export class InferenceError extends LocalIntelligenceError {
   input: string;
 
   constructor(message: string, input: string) {
@@ -54,7 +54,7 @@ export class InferenceError extends DebrieError {
   }
 }
 
-export class InitializationError extends DebrieError {
+export class InitializationError extends LocalIntelligenceError {
   constructor(message: string) {
     super(message, 'INITIALIZATION_ERROR');
     this.name = 'InitializationError';

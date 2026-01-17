@@ -9,7 +9,7 @@ export {
   getCacheSize,
   isReady,
   getConfig,
-} from './DebrieCore';
+} from './LocalIntelligenceCore';
 
 export type {
   CoreConfig,
@@ -26,7 +26,7 @@ export type {
 } from './types';
 
 export {
-  DebrieError,
+  LocalIntelligenceError,
   ModelNotFoundError,
   ModelDownloadError,
   HardwareNotSupportedError,

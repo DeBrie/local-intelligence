@@ -12,7 +12,7 @@
     "lib",
     "ios",
     "android",
-    "debrie-core.podspec",
+    "local-intelligence-core.podspec",
     "!ios/build",
     "!android/build",
     "!**/__tests__",
@@ -35,15 +35,15 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/debrie/local-intelligence.git",
+    "url": "https://github.com/anthropics/local-intelligence.git",
     "directory": "libs/core"
   },
   "author": "Local Intelligence",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/debrie/local-intelligence/issues"
+    "url": "https://github.com/anthropics/local-intelligence/issues"
   },
-  "homepage": "https://github.com/debrie/local-intelligence#readme",
+  "homepage": "https://github.com/anthropics/local-intelligence#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"

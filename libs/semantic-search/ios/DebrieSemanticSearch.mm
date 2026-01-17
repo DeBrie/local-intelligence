@@ -1,7 +1,7 @@
 #import <React/RCTBridgeModule.h>
 #import <React/RCTEventEmitter.h>
 
-@interface RCT_EXTERN_MODULE(DebrieSemanticSearch, NSObject)
+@interface RCT_EXTERN_MODULE(LocalIntelligenceSemanticSearch, NSObject)
 
 RCT_EXTERN_METHOD(initialize:(NSString *)configJson
                   resolve:(RCTPromiseResolveBlock)resolve

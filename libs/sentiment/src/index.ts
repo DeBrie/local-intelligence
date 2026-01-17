@@ -10,7 +10,7 @@ export {
   getConfig,
   getLabelEmoji,
   getLabelColor,
-} from './DebrieSentiment';
+} from './LocalIntelligenceSentiment';
 
 export { useSentiment } from './useSentiment';
 
@@ -23,7 +23,7 @@ export type {
   SentimentTrend,
 } from './types';
 
-export type { SentimentEventCallback } from './DebrieSentiment';
+export type { SentimentEventCallback } from './LocalIntelligenceSentiment';
 
 export type {
   UseSentimentOptions,

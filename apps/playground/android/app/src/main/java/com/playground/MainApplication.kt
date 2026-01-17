@@ -11,10 +11,10 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
-import com.debrie.core.DebrieCorePackage
-import com.debrie.pii.DebriePIIPackage
-import com.debrie.sentiment.DebrieSentimentPackage
-import com.debrie.semanticsearch.DebrieSemanticSearchPackage
+import com.localintelligence.core.LocalIntelligenceCorePackage
+import com.localintelligence.pii.LocalIntelligencePIIPackage
+import com.localintelligence.sentiment.LocalIntelligenceSentimentPackage
+import com.localintelligence.semanticsearch.LocalIntelligenceSemanticSearchPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -23,10 +23,10 @@ class MainApplication : Application(), ReactApplication {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
               // Packages that cannot be autolinked yet can be added manually here, for example:
-              add(DebrieCorePackage())
-              add(DebriePIIPackage())
-              add(DebrieSentimentPackage())
-              add(DebrieSemanticSearchPackage())
+              add(LocalIntelligenceCorePackage())
+              add(LocalIntelligencePIIPackage())
+              add(LocalIntelligenceSentimentPackage())
+              add(LocalIntelligenceSemanticSearchPackage())
             }
 
         override fun getJSMainModuleName(): String = "src/main"

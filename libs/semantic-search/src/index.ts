@@ -9,7 +9,7 @@ export {
   onModelDownloadProgress,
   isReady,
   getConfig,
-} from './DebrieSemanticSearch';
+} from './LocalIntelligenceSemanticSearch';
 
 export { SemanticIndex } from './SemanticIndex';
 
@@ -32,7 +32,7 @@ export type { SemanticIndexOptions } from './SemanticIndex';
 export type {
   EmbeddingEventCallback,
   ProgressEventCallback,
-} from './DebrieSemanticSearch';
+} from './LocalIntelligenceSemanticSearch';
 
 export type {
   UseSemanticSearchOptions,

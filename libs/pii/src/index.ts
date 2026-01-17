@@ -10,7 +10,7 @@ export {
   onRedaction,
   isReady,
   getConfig,
-} from './DebriePII';
+} from './LocalIntelligencePII';
 
 export { useRedactor } from './useRedactor';
 
@@ -22,7 +22,7 @@ export type {
   CustomPattern,
   PIIStats,
 } from './types';
-export type { PIIEventCallback } from './DebriePII';
+export type { PIIEventCallback } from './LocalIntelligencePII';
 export type {
   UseRedactorOptions,
   UseRedactorState,

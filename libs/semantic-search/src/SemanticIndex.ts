@@ -1,7 +1,7 @@
 import {
   generateEmbedding,
   generateEmbeddingBatch,
-} from './DebrieSemanticSearch';
+} from './LocalIntelligenceSemanticSearch';
 import type {
   IndexEntry,
   SearchResult,

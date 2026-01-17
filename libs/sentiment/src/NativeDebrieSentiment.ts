@@ -19,4 +19,4 @@ export interface Spec extends TurboModule {
   removeListeners(count: number): void;
 }
 
-export default TurboModuleRegistry.getEnforcing<Spec>('DebrieSentiment');
+export default TurboModuleRegistry.getEnforcing<Spec>('LocalIntelligenceSentiment');

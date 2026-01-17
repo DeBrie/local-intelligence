@@ -25,7 +25,7 @@ On-device AI for React Native — privacy-first, hardware-accelerated machine le
 
 ```bash
 # Clone the repository
-git clone https://github.com/debrie/local-intelligence.git
+git clone https://github.com/local-intelligence/local-intelligence.git
 cd local-intelligence
 
 # Install dependencies

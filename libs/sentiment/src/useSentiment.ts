@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { initialize, analyze, analyzeBatch } from './DebrieSentiment';
+import { initialize, analyze, analyzeBatch } from './LocalIntelligenceSentiment';
 import type { SentimentResult, SentimentConfig } from './types';
 
 export interface UseSentimentOptions {

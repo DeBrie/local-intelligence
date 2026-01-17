@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { initialize, detectEntities, redact, redactBatch } from './DebriePII';
+import { initialize, detectEntities, redact, redactBatch } from './LocalIntelligencePII';
 import type { PIIEntity, RedactionResult, PIIConfig } from './types';
 
 export interface UseRedactorOptions {

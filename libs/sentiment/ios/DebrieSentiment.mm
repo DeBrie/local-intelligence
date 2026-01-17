@@ -1,7 +1,7 @@
 #import <React/RCTBridgeModule.h>
 #import <React/RCTEventEmitter.h>
 
-@interface RCT_EXTERN_MODULE(DebrieSentiment, RCTEventEmitter)
+@interface RCT_EXTERN_MODULE(LocalIntelligenceSentiment, RCTEventEmitter)
 
 RCT_EXTERN_METHOD(initialize:(NSString *)configJson
                   withResolver:(RCTPromiseResolveBlock)resolve
