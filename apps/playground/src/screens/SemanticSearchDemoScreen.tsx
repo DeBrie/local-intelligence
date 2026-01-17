@@ -115,9 +115,15 @@ export function SemanticSearchDemoScreen() {
         setIsLoading(true);
         setError(null);
         try {
-            const searchResults = await indexRef.current.search(queryText, { limit: 5, minSimilarity: 0.1 });
+            console.log('Starting search for:', queryText);
+            const searchResults = await indexRef.current.search(queryText, { limit: 5, minSimilarity: 0.0 });
+            console.log('Search results:', searchResults);
             setResults(searchResults);
+            if (searchResults.length === 0) {
+                Alert.alert('Info', 'No matching results found');
+            }
         } catch (err) {
+            console.error('Search error:', err);
             setError(err instanceof Error ? err.message : 'Search failed');
             Alert.alert('Error', err instanceof Error ? err.message : 'Search failed');
         } finally {

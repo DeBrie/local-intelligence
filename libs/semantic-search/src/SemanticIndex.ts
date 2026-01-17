@@ -43,17 +43,18 @@ export class SemanticIndex {
 
       await this.db.execute(`
         CREATE TABLE IF NOT EXISTS ${this.tableName} (
-          id TEXT PRIMARY KEY,
+          rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+          doc_id TEXT UNIQUE NOT NULL,
           text TEXT NOT NULL,
-          embedding BLOB NOT NULL,
+          embedding TEXT NOT NULL,
           metadata TEXT,
           created_at INTEGER DEFAULT (strftime('%s', 'now'))
         )
       `);
 
+      // sqlite-vec virtual table uses rowid by default
       await this.db.execute(`
         CREATE VIRTUAL TABLE IF NOT EXISTS ${this.tableName}_vec USING vec0(
-          id TEXT PRIMARY KEY,
           embedding float[${this.embeddingDimensions}]
         )
       `);
@@ -76,30 +77,39 @@ export class SemanticIndex {
 
     if (options.skipDuplicates) {
       const existing = await this.db.execute(
-        `SELECT id FROM ${this.tableName} WHERE id = ?`,
+        `SELECT doc_id FROM ${this.tableName} WHERE doc_id = ?`,
         [id],
       );
-      if (existing.rows.length > 0) {
+      const rows = existing.rows?._array || existing.rows || [];
+      if (rows.length > 0) {
         return;
       }
     }
 
     const embeddingResult = await generateEmbedding(text);
-    // Store embedding as JSON string for the main table
     const embeddingJson = JSON.stringify(embeddingResult.embedding);
     const metadataJson = options.metadata
       ? JSON.stringify(options.metadata)
       : null;
 
+    // Insert into main table and get rowid
     await this.db.execute(
-      `INSERT OR REPLACE INTO ${this.tableName} (id, text, embedding, metadata) VALUES (?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO ${this.tableName} (doc_id, text, embedding, metadata) VALUES (?, ?, ?, ?)`,
       [id, text, embeddingJson, metadataJson],
     );
 
-    // For sqlite-vec, pass the embedding array as a JSON string
+    // Get the rowid for the vec table
+    const rowResult = await this.db.execute(
+      `SELECT rowid FROM ${this.tableName} WHERE doc_id = ?`,
+      [id],
+    );
+    const rowid =
+      rowResult.rows?._array?.[0]?.rowid ?? rowResult.rows?.[0]?.rowid;
+
+    // Insert into vec table with matching rowid
     await this.db.execute(
-      `INSERT OR REPLACE INTO ${this.tableName}_vec (id, embedding) VALUES (?, ?)`,
-      [id, JSON.stringify(embeddingResult.embedding)],
+      `INSERT OR REPLACE INTO ${this.tableName}_vec (rowid, embedding) VALUES (?, ?)`,
+      [rowid, embeddingJson],
     );
   }
 
@@ -125,30 +135,39 @@ export class SemanticIndex {
 
       if (options.skipDuplicates) {
         const existing = await this.db.execute(
-          `SELECT id FROM ${this.tableName} WHERE id = ?`,
+          `SELECT doc_id FROM ${this.tableName} WHERE doc_id = ?`,
           [entry.id],
         );
-        if (existing.rows.length > 0) {
+        const existingRows = existing.rows?._array || existing.rows || [];
+        if (existingRows.length > 0) {
           skipped++;
           continue;
         }
       }
 
-      // Store embedding as JSON string for the main table
       const embeddingJson = JSON.stringify(embedding);
       const metadataJson = entry.metadata
         ? JSON.stringify(entry.metadata)
         : null;
 
+      // Insert into main table
       await this.db.execute(
-        `INSERT OR REPLACE INTO ${this.tableName} (id, text, embedding, metadata) VALUES (?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO ${this.tableName} (doc_id, text, embedding, metadata) VALUES (?, ?, ?, ?)`,
         [entry.id, entry.text, embeddingJson, metadataJson],
       );
 
-      // For sqlite-vec, pass the embedding array as a JSON string
+      // Get the rowid for the vec table
+      const rowResult = await this.db.execute(
+        `SELECT rowid FROM ${this.tableName} WHERE doc_id = ?`,
+        [entry.id],
+      );
+      const rowid =
+        rowResult.rows?._array?.[0]?.rowid ?? rowResult.rows?.[0]?.rowid;
+
+      // Insert into vec table with matching rowid
       await this.db.execute(
-        `INSERT OR REPLACE INTO ${this.tableName}_vec (id, embedding) VALUES (?, ?)`,
-        [entry.id, JSON.stringify(embedding)],
+        `INSERT OR REPLACE INTO ${this.tableName}_vec (rowid, embedding) VALUES (?, ?)`,
+        [rowid, embeddingJson],
       );
 
       added++;
@@ -167,41 +186,40 @@ export class SemanticIndex {
 
     const queryEmbedding = await generateEmbedding(query);
 
-    // Pass embedding as JSON string for sqlite-vec
+    console.log('Query embedding length:', queryEmbedding.embedding.length);
+
+    // sqlite-vec query uses rowid, join with main table to get doc_id
     const vecResults = await this.db.execute(
-      `SELECT id, distance FROM ${this.tableName}_vec 
-       WHERE embedding MATCH ? 
-       ORDER BY distance 
+      `SELECT v.rowid, v.distance, m.doc_id, m.text, m.metadata
+       FROM ${this.tableName}_vec v
+       JOIN ${this.tableName} m ON v.rowid = m.rowid
+       WHERE v.embedding MATCH ?
+       ORDER BY v.distance
        LIMIT ?`,
       [JSON.stringify(queryEmbedding.embedding), limit * 2],
     );
 
+    console.log('Vec results:', JSON.stringify(vecResults));
+
     const results: SearchResult[] = [];
 
-    for (const row of vecResults.rows) {
+    const rows = vecResults.rows?._array || vecResults.rows || [];
+    for (const row of rows) {
       const similarity = 1 - row.distance;
 
       if (similarity < minSimilarity) {
         continue;
       }
 
-      const entryResult = await this.db.execute(
-        `SELECT text, metadata FROM ${this.tableName} WHERE id = ?`,
-        [row.id],
-      );
-
-      if (entryResult.rows.length > 0) {
-        const entry = entryResult.rows[0];
-        results.push({
-          id: row.id,
-          text: entry.text,
-          similarity,
-          metadata:
-            includeMetadata && entry.metadata
-              ? JSON.parse(entry.metadata)
-              : undefined,
-        });
-      }
+      results.push({
+        id: row.doc_id,
+        text: row.text,
+        similarity,
+        metadata:
+          includeMetadata && row.metadata
+            ? JSON.parse(row.metadata)
+            : undefined,
+      });
 
       if (results.length >= limit) {
         break;
@@ -214,14 +232,25 @@ export class SemanticIndex {
   async remove(id: string): Promise<boolean> {
     this.ensureInitialized();
 
+    // Get rowid first for vec table deletion
+    const rowResult = await this.db.execute(
+      `SELECT rowid FROM ${this.tableName} WHERE doc_id = ?`,
+      [id],
+    );
+    const rowid =
+      rowResult.rows?._array?.[0]?.rowid ?? rowResult.rows?.[0]?.rowid;
+
     const result = await this.db.execute(
-      `DELETE FROM ${this.tableName} WHERE id = ?`,
+      `DELETE FROM ${this.tableName} WHERE doc_id = ?`,
       [id],
     );
 
-    await this.db.execute(`DELETE FROM ${this.tableName}_vec WHERE id = ?`, [
-      id,
-    ]);
+    if (rowid) {
+      await this.db.execute(
+        `DELETE FROM ${this.tableName}_vec WHERE rowid = ?`,
+        [rowid],
+      );
+    }
 
     return result.rowsAffected > 0;
   }
@@ -237,17 +266,18 @@ export class SemanticIndex {
     this.ensureInitialized();
 
     const result = await this.db.execute(
-      `SELECT id, text, metadata, created_at FROM ${this.tableName} WHERE id = ?`,
+      `SELECT doc_id, text, metadata, created_at FROM ${this.tableName} WHERE doc_id = ?`,
       [id],
     );
 
-    if (result.rows.length === 0) {
+    const rows = result.rows?._array || result.rows || [];
+    if (rows.length === 0) {
       return null;
     }
 
-    const row = result.rows[0];
+    const row = rows[0];
     return {
-      id: row.id,
+      id: row.doc_id,
       text: row.text,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
       createdAt: row.created_at,
@@ -261,8 +291,11 @@ export class SemanticIndex {
       `SELECT COUNT(*) as count FROM ${this.tableName}`,
     );
 
+    const rows = countResult.rows?._array || countResult.rows || [];
+    const count = rows[0]?.count ?? 0;
+
     return {
-      totalEntries: countResult.rows[0].count,
+      totalEntries: count,
       databaseSizeBytes: 0,
       embeddingDimensions: this.embeddingDimensions,
       tableName: this.tableName,
