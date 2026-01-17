@@ -1,0 +1,71 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (skip actual publish)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: publish
+    defaults:
+      run:
+        working-directory: debrie-workspace
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npx nx run-many --target=build --all
+
+      - name: Publish @local-intelligence/core
+        if: inputs.dry_run != true
+        working-directory: debrie-workspace/libs/core
+        run: npm publish --access public --provenance
+
+      - name: Publish @local-intelligence/pii
+        if: inputs.dry_run != true
+        working-directory: debrie-workspace/libs/pii
+        run: npm publish --access public --provenance
+
+      - name: Publish @local-intelligence/sentiment
+        if: inputs.dry_run != true
+        working-directory: debrie-workspace/libs/sentiment
+        run: npm publish --access public --provenance
+
+      - name: Publish @local-intelligence/semantic-search
+        if: inputs.dry_run != true
+        working-directory: debrie-workspace/libs/semantic-search
+        run: npm publish --access public --provenance
+
+      - name: Dry run - Show what would be published
+        if: inputs.dry_run == true
+        run: |
+          echo "=== DRY RUN - Would publish these packages ==="
+          for pkg in core pii sentiment semantic-search; do
+            echo "--- libs/$pkg ---"
+            cd libs/$pkg
+            npm pack --dry-run
+            cd ../..
+          done
