@@ -9,8 +9,8 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
-import { useRedactor, getStats, resetStats } from '@debrie/pii';
-import type { PIIEntity, PIIStats } from '@debrie/pii';
+import { useRedactor, getStats, resetStats } from '@local-intelligence/pii';
+import type { PIIEntity, PIIStats } from '@local-intelligence/pii';
 
 const SAMPLE_TEXTS = [
     'Contact John Smith at john.smith@example.com or call 555-123-4567.',

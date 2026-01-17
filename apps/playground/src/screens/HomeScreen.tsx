@@ -55,7 +55,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     return (
         <ScrollView style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>@debrie/local-intelligence</Text>
+                <Text style={styles.title}>@local-intelligence</Text>
                 <Text style={styles.subtitle}>On-Device AI Playground</Text>
             </View>
 

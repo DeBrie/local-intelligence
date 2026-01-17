@@ -13,7 +13,7 @@ import {
     initialize,
     generateEmbedding,
     generateEmbeddingBatch,
-} from '@debrie/semantic-search';
+} from '@local-intelligence/semantic-search';
 
 interface SearchResult {
     id: string;

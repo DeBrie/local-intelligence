@@ -1,5 +1,5 @@
 {
-  "name": "@debrie/semantic-search",
+  "name": "@local-intelligence/semantic-search",
   "version": "0.1.0",
   "description": "On-device semantic search with vector embeddings for React Native",
   "main": "src/index.ts",
@@ -26,7 +26,7 @@
     "machine-learning",
     "on-device"
   ],
-  "author": "Debrie",
+  "author": "Local Intelligence",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -38,7 +38,7 @@
   },
   "homepage": "https://github.com/debrie/local-intelligence#readme",
   "peerDependencies": {
-    "@debrie/core": ">=0.1.0",
+    "@local-intelligence/core": ">=0.1.0",
     "@op-engineering/op-sqlite": ">=7.0.0",
     "react": ">=18.0.0",
     "react-native": ">=0.76.0"

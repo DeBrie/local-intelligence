@@ -10,7 +10,7 @@ import type {
 import { InitializationError, ModelDownloadError } from './errors';
 
 const LINKING_ERROR =
-  `The package '@debrie/core' doesn't seem to be linked. Make sure: \n\n` +
+  `The package '@local-intelligence/core' doesn't seem to be linked. Make sure: \n\n` +
   Platform.select({ ios: "- You have run 'pod install'\n", default: '' }) +
   '- You rebuilt the app after installing the package\n' +
   '- You are not using Expo Go\n';

@@ -1,16 +1,16 @@
-# @debrie/local-intelligence
+# @local-intelligence
 
 On-device AI for React Native — privacy-first, hardware-accelerated machine learning without cloud dependencies.
 
 ## Packages
 
-| Package                   | Description                                         | Status     |
-| ------------------------- | --------------------------------------------------- | ---------- |
-| `@debrie/core`            | Native engine, model management, hardware detection | ✅ MVP     |
-| `@debrie/pii`             | PII redaction with NLTagger (iOS) / BERT (Android)  | ✅ MVP     |
-| `@debrie/sentiment`       | 3-class sentiment analysis with batch processing    | ✅ MVP     |
-| `@debrie/semantic-search` | Text embeddings + vector storage (sqlite-vec)       | ✅ MVP     |
-| `@debrie/chat`            | On-device LLM (Foundation Models / ExecuTorch)      | 🚧 Planned |
+| Package                               | Description                                         | Status     |
+| ------------------------------------- | --------------------------------------------------- | ---------- |
+| `@local-intelligence/core`            | Native engine, model management, hardware detection | ✅ MVP     |
+| `@local-intelligence/pii`             | PII redaction with NLTagger (iOS) / BERT (Android)  | ✅ MVP     |
+| `@local-intelligence/sentiment`       | 3-class sentiment analysis with batch processing    | ✅ MVP     |
+| `@local-intelligence/semantic-search` | Text embeddings + vector storage (sqlite-vec)       | ✅ MVP     |
+| `@local-intelligence/chat`            | On-device LLM (Foundation Models / ExecuTorch)      | 🚧 Planned |
 
 ## Getting Started
 
@@ -45,9 +45,9 @@ nx run playground:run-android
 This is an Nx monorepo with the following structure:
 
 ```
-debrie-workspace/
+local-intelligence/
 ├── libs/
-│   └── core/           # @debrie/core - Native JSI/TurboModule
+│   └── core/           # @local-intelligence/core - Native JSI/TurboModule
 ├── apps/
 │   └── playground/     # Demo app showcasing all features
 ├── nx.json             # Nx configuration
@@ -111,4 +111,4 @@ git commit -m "docs(workspace): update README"
 
 ## License
 
-MIT © [Debrie](https://github.com/debrie)
+MIT © [Local Intelligence](https://github.com/anthropics/local-intelligence)

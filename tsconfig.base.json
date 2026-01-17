@@ -17,16 +17,18 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "es2022",
-    "customConditions": ["@debrie-workspace/source"],
+    "customConditions": ["@local-intelligence/source"],
     "paths": {
-      "@debrie/core": ["libs/core/src/index.ts"],
-      "@debrie/core/*": ["libs/core/src/*"],
-      "@debrie/pii": ["libs/pii/src/index.ts"],
-      "@debrie/pii/*": ["libs/pii/src/*"],
-      "@debrie/sentiment": ["libs/sentiment/src/index.ts"],
-      "@debrie/sentiment/*": ["libs/sentiment/src/*"],
-      "@debrie/semantic-search": ["libs/semantic-search/src/index.ts"],
-      "@debrie/semantic-search/*": ["libs/semantic-search/src/*"]
+      "@local-intelligence/core": ["libs/core/src/index.ts"],
+      "@local-intelligence/core/*": ["libs/core/src/*"],
+      "@local-intelligence/pii": ["libs/pii/src/index.ts"],
+      "@local-intelligence/pii/*": ["libs/pii/src/*"],
+      "@local-intelligence/sentiment": ["libs/sentiment/src/index.ts"],
+      "@local-intelligence/sentiment/*": ["libs/sentiment/src/*"],
+      "@local-intelligence/semantic-search": [
+        "libs/semantic-search/src/index.ts"
+      ],
+      "@local-intelligence/semantic-search/*": ["libs/semantic-search/src/*"]
     }
   }
 }

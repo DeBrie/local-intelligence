@@ -1,12 +1,12 @@
 {
-  "name": "@debrie-workspace/playground",
+  "name": "@local-intelligence/playground",
   "version": "0.0.1",
   "private": true,
   "dependencies": {
-    "@debrie/core": "*",
-    "@debrie/pii": "*",
-    "@debrie/sentiment": "*",
-    "@debrie/semantic-search": "*",
+    "@local-intelligence/core": "*",
+    "@local-intelligence/pii": "*",
+    "@local-intelligence/sentiment": "*",
+    "@local-intelligence/semantic-search": "*",
     "@op-engineering/op-sqlite": "^11.0.0",
     "@react-native/metro-config": "*",
     "@react-navigation/native": "^7.0.0",

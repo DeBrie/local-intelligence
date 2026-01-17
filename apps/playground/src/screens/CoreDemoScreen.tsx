@@ -14,7 +14,7 @@ import {
     clearModelCache,
     isReady,
     type DeviceCapabilities,
-} from '@debrie/core';
+} from '@local-intelligence/core';
 
 export function CoreDemoScreen() {
     const [loading, setLoading] = useState(true);

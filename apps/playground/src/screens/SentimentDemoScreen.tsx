@@ -16,8 +16,8 @@ import {
     clearCache,
     getLabelColor,
     getLabelEmoji,
-} from '@debrie/sentiment';
-import type { SentimentStats } from '@debrie/sentiment';
+} from '@local-intelligence/sentiment';
+import type { SentimentStats } from '@local-intelligence/sentiment';
 
 const SAMPLE_TEXTS = [
     'I absolutely love this product! It exceeded all my expectations.',

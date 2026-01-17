@@ -1,7 +1,7 @@
 {
-  "name": "@debrie/core",
+  "name": "@local-intelligence/core",
   "version": "0.0.1",
-  "description": "Core native engine for @debrie/local-intelligence - JSI/TurboModule runtime, model management, and hardware detection",
+  "description": "Core native engine for local-intelligence - JSI/TurboModule runtime, model management, and hardware detection",
   "main": "lib/commonjs/index.js",
   "module": "lib/module/index.js",
   "types": "lib/typescript/src/index.d.ts",
@@ -38,7 +38,7 @@
     "url": "https://github.com/debrie/local-intelligence.git",
     "directory": "libs/core"
   },
-  "author": "Debrie <hello@debrie.dev>",
+  "author": "Local Intelligence",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/debrie/local-intelligence/issues"

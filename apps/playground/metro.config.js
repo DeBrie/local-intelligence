@@ -15,7 +15,7 @@ const path = require('path');
 const workspaceRoot = path.resolve(__dirname, '../..');
 
 const customConfig = {
-  cacheVersion: '@debrie-workspace/playground',
+  cacheVersion: '@local-intelligence/playground',
   transformer: {
     babelTransformerPath: require.resolve('react-native-svg-transformer'),
   },

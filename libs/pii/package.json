@@ -1,5 +1,5 @@
 {
-  "name": "@debrie/pii",
+  "name": "@local-intelligence/pii",
   "version": "0.0.1",
   "description": "On-device PII redaction for React Native - NLTagger (iOS) and BERT (Android) powered entity detection",
   "main": "lib/commonjs/index.js",
@@ -39,7 +39,7 @@
     "url": "https://github.com/debrie/local-intelligence.git",
     "directory": "libs/pii"
   },
-  "author": "Debrie <hello@debrie.dev>",
+  "author": "Local Intelligence",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/debrie/local-intelligence/issues"
@@ -50,7 +50,7 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@debrie/core": ">=0.0.1",
+    "@local-intelligence/core": ">=0.1.0",
     "react": ">=18.0.0",
     "react-native": ">=0.76.0"
   },
