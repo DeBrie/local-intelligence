@@ -12,6 +12,37 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
 
     companion object {
         const val NAME = "LocalIntelligencePII"
+
+        // PII Labels from gravitee-io/bert-small-pii-detection model
+        val PII_LABELS = listOf(
+            "O",  // Outside (not PII)
+            "AGE",
+            "COORDINATE",
+            "CREDIT_CARD",
+            "DATE_TIME",
+            "EMAIL_ADDRESS",
+            "FINANCIAL",
+            "IBAN_CODE",
+            "IMEI",
+            "IP_ADDRESS",
+            "LOCATION",
+            "MAC_ADDRESS",
+            "NRP",
+            "ORGANIZATION",
+            "PASSWORD",
+            "PERSON",
+            "PHONE_NUMBER",
+            "TITLE",
+            "URL",
+            "US_BANK_NUMBER",
+            "US_DRIVER_LICENSE",
+            "US_ITIN",
+            "US_LICENSE_PLATE",
+            "US_PASSPORT",
+            "US_SSN"
+        )
+
+        fun labelToType(label: String): String = label.lowercase()
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -23,17 +54,17 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
     private var stats = PIIStats()
 
     private val regexPatterns = mapOf(
-        "email" to PatternInfo(
+        "email_address" to PatternInfo(
             """[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}""",
-            "email"
+            "email_address"
         ),
-        "phone" to PatternInfo(
+        "phone_number" to PatternInfo(
             """\b(?:\+1[-.]?)?\(?[0-9]{3}\)?[-.]?[0-9]{3}[-.]?[0-9]{4}\b""",
-            "phone"
+            "phone_number"
         ),
-        "ssn" to PatternInfo(
+        "us_ssn" to PatternInfo(
             """\b[0-9]{3}[-]?[0-9]{2}[-]?[0-9]{4}\b""",
-            "ssn"
+            "us_ssn"
         ),
         "credit_card" to PatternInfo(
             """\b(?:[0-9]{4}[-\s]?){3}[0-9]{4}\b""",
@@ -46,11 +77,30 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
         "url" to PatternInfo(
             """https?://[^\s]+""",
             "url"
+        ),
+        "iban_code" to PatternInfo(
+            """\b[A-Z]{2}[0-9]{2}[A-Z0-9]{4}[0-9]{7}([A-Z0-9]?){0,16}\b""",
+            "iban_code"
+        ),
+        "mac_address" to PatternInfo(
+            """\b([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\b""",
+            "mac_address"
+        ),
+        "coordinate" to PatternInfo(
+            """\b[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?),\s*[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)\b""",
+            "coordinate"
+        ),
+        "us_driver_license" to PatternInfo(
+            """\b[A-Z][0-9]{3,8}\b""",
+            "us_driver_license"
         )
     )
 
     data class PIIConfig(
-        var enabledTypes: List<String> = listOf("person", "organization", "location", "address", "email", "phone", "ssn", "credit_card"),
+        var enabledTypes: List<String> = listOf(
+            "person", "organization", "location", "email_address", "phone_number",
+            "us_ssn", "credit_card", "date_time", "ip_address", "url"
+        ),
         var redactionChar: String = "*",
         var minConfidence: Double = 0.7,
         var preserveLength: Boolean = true

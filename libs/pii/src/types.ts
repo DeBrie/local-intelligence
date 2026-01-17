@@ -1,15 +1,32 @@
+/**
+ * PII Entity types supported by the bert-small-pii model
+ * Source: https://huggingface.co/gravitee-io/bert-small-pii-detection
+ */
 export type PIIEntityType =
-  | 'person'
-  | 'organization'
-  | 'location'
-  | 'email'
-  | 'phone'
-  | 'ssn'
+  | 'age'
+  | 'coordinate'
   | 'credit_card'
-  | 'date'
-  | 'address'
+  | 'date_time'
+  | 'email_address'
+  | 'financial'
+  | 'iban_code'
+  | 'imei'
   | 'ip_address'
+  | 'location'
+  | 'mac_address'
+  | 'nrp'
+  | 'organization'
+  | 'password'
+  | 'person'
+  | 'phone_number'
+  | 'title'
   | 'url'
+  | 'us_bank_number'
+  | 'us_driver_license'
+  | 'us_itin'
+  | 'us_license_plate'
+  | 'us_passport'
+  | 'us_ssn'
   | 'custom';
 
 export interface PIIEntity {
