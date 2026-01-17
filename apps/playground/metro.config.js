@@ -10,6 +10,10 @@ const { assetExts, sourceExts } = defaultConfig.resolver;
  *
  * @type {import('metro-config').MetroConfig}
  */
+const path = require('path');
+
+const workspaceRoot = path.resolve(__dirname, '../..');
+
 const customConfig = {
   cacheVersion: '@debrie-workspace/playground',
   transformer: {
@@ -18,6 +22,11 @@ const customConfig = {
   resolver: {
     assetExts: assetExts.filter((ext) => ext !== 'svg'),
     sourceExts: [...sourceExts, 'cjs', 'mjs', 'svg'],
+    // Ensure all libs use the same React instance from the app
+    extraNodeModules: {
+      react: path.resolve(workspaceRoot, 'node_modules/react'),
+      'react-native': path.resolve(workspaceRoot, 'node_modules/react-native'),
+    },
   },
 };
 
