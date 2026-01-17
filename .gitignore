@@ -114,3 +114,9 @@ yarn-error.log
 test-output
 
 vite.config.*.timestamp*
+
+# Build output
+libs/*/lib/
+
+# npm pack artifacts
+*.tgz
