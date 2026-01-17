@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="node" />
 module.exports = {
-  displayName: '@debrie-workspace/playground',
+  displayName: '@local-intelligence/playground',
   preset: 'react-native',
   resolver: '@nx/jest/plugins/resolver',
   moduleFileExtensions: ['ts', 'js', 'html', 'tsx', 'jsx'],

@@ -50,7 +50,7 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@local-intelligence/core": ">=0.1.0",
+    "@local-intelligence/core": "*",
     "react": ">=18.0.0",
     "react-native": ">=0.76.0"
   },
