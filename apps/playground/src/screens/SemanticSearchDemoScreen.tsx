@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
     View,
     Text,
@@ -11,9 +11,33 @@ import {
 } from 'react-native';
 import {
     initialize,
-    SemanticIndex,
+    generateEmbedding,
+    generateEmbeddingBatch,
 } from '@debrie/semantic-search';
-import type { SearchResult, IndexStats } from '@debrie/semantic-search';
+
+interface SearchResult {
+    id: string;
+    text: string;
+    similarity: number;
+}
+
+interface DocumentWithEmbedding {
+    id: string;
+    text: string;
+    embedding: number[];
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let i = 0; i < a.length; i++) {
+        dotProduct += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+    }
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
 
 const SAMPLE_DOCUMENTS = [
     { id: '1', text: 'React Native is a framework for building mobile apps using JavaScript and React.' },
@@ -33,8 +57,6 @@ const SAMPLE_QUERIES = [
     'How does semantic search work?',
 ];
 
-const DB_NAME = 'semantic_search_v2.db';
-
 export function SemanticSearchDemoScreen() {
     const [queryText, setQueryText] = useState(SAMPLE_QUERIES[0]);
     const [indexedCount, setIndexedCount] = useState(0);
@@ -42,35 +64,19 @@ export function SemanticSearchDemoScreen() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [results, setResults] = useState<SearchResult[]>([]);
-    const [stats, setStats] = useState<IndexStats | null>(null);
-
-    const indexRef = useRef<SemanticIndex | null>(null);
+    const [indexedDocs, setIndexedDocs] = useState<DocumentWithEmbedding[]>([]);
+    const [embeddingDimensions, setEmbeddingDimensions] = useState(0);
 
     const handleInitialize = async () => {
         setIsLoading(true);
         setError(null);
         try {
-            // First initialize the embedding model
             await initialize({
                 modelId: 'sentence-embedding',
                 embeddingDimensions: 512,
             });
-
-            // Then initialize the semantic index (sqlite-vec)
-            const index = new SemanticIndex({
-                databasePath: DB_NAME,
-                tableName: 'documents',
-                embeddingDimensions: 512,
-            });
-            await index.initialize();
-            indexRef.current = index;
-
-            const indexStats = await index.getStats();
-            setStats(indexStats);
-            setIndexedCount(indexStats.totalEntries);
             setIsInitialized(true);
-
-            Alert.alert('Success', 'Semantic search initialized with sqlite-vec');
+            Alert.alert('Success', 'Embedding model initialized (in-memory search)');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to initialize');
             Alert.alert('Error', err instanceof Error ? err.message : 'Failed to initialize');
@@ -80,7 +86,7 @@ export function SemanticSearchDemoScreen() {
     };
 
     const handleIndexDocuments = async () => {
-        if (!indexRef.current) {
+        if (!isInitialized) {
             Alert.alert('Error', 'Please initialize first');
             return;
         }
@@ -88,11 +94,20 @@ export function SemanticSearchDemoScreen() {
         setIsLoading(true);
         setError(null);
         try {
-            const result = await indexRef.current.addBatch(SAMPLE_DOCUMENTS);
-            setIndexedCount(result.added);
-            const indexStats = await indexRef.current.getStats();
-            setStats(indexStats);
-            Alert.alert('Success', `Indexed ${result.added} documents to sqlite-vec`);
+            const texts = SAMPLE_DOCUMENTS.map(d => d.text);
+            const batchResult = await generateEmbeddingBatch(texts);
+
+            const docsWithEmbeddings: DocumentWithEmbedding[] = SAMPLE_DOCUMENTS.map((doc, i) => ({
+                id: doc.id,
+                text: doc.text,
+                embedding: batchResult.embeddings[i].embedding,
+            }));
+
+            setIndexedDocs(docsWithEmbeddings);
+            setIndexedCount(docsWithEmbeddings.length);
+            setEmbeddingDimensions(batchResult.embeddings[0]?.embedding.length ?? 0);
+
+            Alert.alert('Success', `Indexed ${docsWithEmbeddings.length} documents (${batchResult.totalProcessingTimeMs.toFixed(0)}ms)`);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to index documents');
             Alert.alert('Error', err instanceof Error ? err.message : 'Failed to index documents');
@@ -107,47 +122,46 @@ export function SemanticSearchDemoScreen() {
             return;
         }
 
-        if (!indexRef.current) {
-            Alert.alert('Error', 'Please initialize first');
+        if (indexedDocs.length === 0) {
+            Alert.alert('Error', 'Please index documents first');
             return;
         }
 
         setIsLoading(true);
         setError(null);
         try {
-            console.log('Starting search for:', queryText);
-            const searchResults = await indexRef.current.search(queryText, { limit: 5, minSimilarity: 0.0 });
-            console.log('Search results:', searchResults);
-            setResults(searchResults);
+            const queryResult = await generateEmbedding(queryText);
+
+            // Calculate cosine similarity with all documents
+            const searchResults: SearchResult[] = indexedDocs.map(doc => ({
+                id: doc.id,
+                text: doc.text,
+                similarity: cosineSimilarity(queryResult.embedding, doc.embedding),
+            }));
+
+            // Sort by similarity descending
+            searchResults.sort((a, b) => b.similarity - a.similarity);
+
+            setResults(searchResults.slice(0, 5));
+
             if (searchResults.length === 0) {
                 Alert.alert('Info', 'No matching results found');
             }
         } catch (err) {
-            console.error('Search error:', err);
-            setError(err instanceof Error ? err.message : 'Search failed');
-            Alert.alert('Error', err instanceof Error ? err.message : 'Search failed');
+            const errorMsg = err instanceof Error ? err.message : 'Search failed';
+            Alert.alert('Search Error', errorMsg);
+            setError(errorMsg);
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleClear = async () => {
-        if (!indexRef.current) {
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            await indexRef.current.clear();
-            setIndexedCount(0);
-            setResults([]);
-            setStats(null);
-            Alert.alert('Success', 'Index cleared');
-        } catch (err) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to clear index');
-        } finally {
-            setIsLoading(false);
-        }
+    const handleClear = () => {
+        setIndexedDocs([]);
+        setIndexedCount(0);
+        setResults([]);
+        setEmbeddingDimensions(0);
+        Alert.alert('Success', 'Index cleared');
     };
 
     const loadSampleQuery = (index: number) => {
@@ -188,7 +202,7 @@ export function SemanticSearchDemoScreen() {
                 {isInitialized && (
                     <View style={styles.statusRow}>
                         <Text style={styles.statusLabel}>Indexed Documents:</Text>
-                        <Text style={styles.statusValue}>{stats?.totalEntries ?? indexedCount}</Text>
+                        <Text style={styles.statusValue}>{indexedCount}</Text>
                     </View>
                 )}
             </View>
@@ -294,19 +308,19 @@ export function SemanticSearchDemoScreen() {
                 </View>
             )}
 
-            {/* Database Info */}
-            {stats && (
+            {/* Embedding Info */}
+            {embeddingDimensions > 0 && (
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Database Info</Text>
+                    <Text style={styles.sectionTitle}>Embedding Info</Text>
                     <View style={styles.embeddingCard}>
                         <Text style={styles.embeddingInfo}>
-                            Storage: sqlite-vec
+                            Storage: In-Memory
                         </Text>
                         <Text style={styles.embeddingInfo}>
-                            Embedding Dimensions: {stats.embeddingDimensions}
+                            Embedding Dimensions: {embeddingDimensions}
                         </Text>
                         <Text style={styles.embeddingInfo}>
-                            Table: {stats.tableName}
+                            Documents: {indexedCount}
                         </Text>
                     </View>
                 </View>

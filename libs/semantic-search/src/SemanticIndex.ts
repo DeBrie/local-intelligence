@@ -188,13 +188,12 @@ export class SemanticIndex {
 
     console.log('Query embedding length:', queryEmbedding.embedding.length);
 
-    // sqlite-vec query uses rowid, join with main table to get doc_id
+    // Query sqlite-vec for nearest neighbors
     const vecResults = await this.db.execute(
-      `SELECT v.rowid, v.distance, m.doc_id, m.text, m.metadata
-       FROM ${this.tableName}_vec v
-       JOIN ${this.tableName} m ON v.rowid = m.rowid
-       WHERE v.embedding MATCH ?
-       ORDER BY v.distance
+      `SELECT rowid, distance 
+       FROM ${this.tableName}_vec 
+       WHERE embedding MATCH ?
+       ORDER BY distance
        LIMIT ?`,
       [JSON.stringify(queryEmbedding.embedding), limit * 2],
     );
@@ -203,23 +202,35 @@ export class SemanticIndex {
 
     const results: SearchResult[] = [];
 
-    const rows = vecResults.rows?._array || vecResults.rows || [];
-    for (const row of rows) {
-      const similarity = 1 - row.distance;
+    const vecRows = vecResults.rows?._array || vecResults.rows || [];
+    console.log('Vec rows count:', vecRows.length);
+
+    for (const vecRow of vecRows) {
+      const similarity = 1 - vecRow.distance;
 
       if (similarity < minSimilarity) {
         continue;
       }
 
-      results.push({
-        id: row.doc_id,
-        text: row.text,
-        similarity,
-        metadata:
-          includeMetadata && row.metadata
-            ? JSON.parse(row.metadata)
-            : undefined,
-      });
+      // Look up the document by rowid
+      const docResult = await this.db.execute(
+        `SELECT doc_id, text, metadata FROM ${this.tableName} WHERE rowid = ?`,
+        [vecRow.rowid],
+      );
+
+      const docRows = docResult.rows?._array || docResult.rows || [];
+      if (docRows.length > 0) {
+        const doc = docRows[0];
+        results.push({
+          id: doc.doc_id,
+          text: doc.text,
+          similarity,
+          metadata:
+            includeMetadata && doc.metadata
+              ? JSON.parse(doc.metadata)
+              : undefined,
+        });
+      }
 
       if (results.length >= limit) {
         break;
