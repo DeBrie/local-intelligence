@@ -2,6 +2,47 @@
 
 On-device AI for React Native — privacy-first, hardware-accelerated machine learning without cloud dependencies.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="assets/core.png" width="250" alt="Core Demo" /><br />
+      <b>Core Module</b><br />
+      <sub>Device capabilities detection, hardware acceleration status, and model cache management</sub>
+    </td>
+    <td align="center">
+      <img src="assets/sentiment-analysis.png" width="250" alt="Sentiment Analysis" /><br />
+      <b>Sentiment Analysis</b><br />
+      <sub>On-device 3-class sentiment classification with confidence scores and score breakdown</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/PII-identifier.png" width="250" alt="PII Detection" /><br />
+      <b>PII Detection</b><br />
+      <sub>Identify personal information including names, emails, and phone numbers with confidence scores</sub>
+    </td>
+    <td align="center">
+      <img src="assets/PII-redactor.png" width="250" alt="PII Redaction" /><br />
+      <b>PII Redaction</b><br />
+      <sub>Automatically redact sensitive information while preserving text structure</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/semantic-search.png" width="250" alt="Semantic Search" /><br />
+      <b>Semantic Search</b><br />
+      <sub>Vector embeddings with natural language queries and similarity-ranked results</sub>
+    </td>
+    <td align="center">
+      <img src="assets/nx-graph.png" width="250" alt="Package Dependencies" /><br />
+      <b>Monorepo Structure</b><br />
+      <sub>Nx-managed packages with core as the shared dependency for all feature modules</sub>
+    </td>
+  </tr>
+</table>
+
 ## Packages
 
 | Package                               | Description                                         | Status     |

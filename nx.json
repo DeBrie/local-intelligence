@@ -2,7 +2,7 @@
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "release": {
     "projects": ["libs/*"],
-    "projectsRelationship": "independent",
+    "projectsRelationship": "fixed",
     "version": {
       "conventionalCommits": true
     },
