@@ -33,7 +33,7 @@ const SAMPLE_QUERIES = [
     'How does semantic search work?',
 ];
 
-const DB_NAME = 'semantic_search_demo.db';
+const DB_NAME = 'semantic_search_v2.db';
 
 export function SemanticSearchDemoScreen() {
     const [queryText, setQueryText] = useState(SAMPLE_QUERIES[0]);
