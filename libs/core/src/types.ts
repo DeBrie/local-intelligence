@@ -12,7 +12,7 @@ export interface DeviceCapabilities {
   hasGPU: boolean;
   ramGB: number;
   supportsFoundationModels: boolean;
-  supportedDelegates: Array<'nnapi' | 'gpu' | 'cpu'>;
+  supportedDelegates: Array<'nnapi' | 'gpu' | 'cpu' | 'coreml' | 'ane'>;
 }
 
 export type ModelState = 'not_downloaded' | 'downloading' | 'ready' | 'error';

@@ -220,8 +220,8 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
             return generateWithTFLite(text)
         }
         
-        // Fallback to hash-based embedding when model not available
-        return generateFallbackEmbedding(text)
+        // Error: Model not available - do not use fallback as it provides no semantic value
+        throw IllegalStateException("Embedding model not ready. Call Core.downloadModel('${config.modelId}') first.")
     }
 
     private fun generateWithTFLite(text: String): DoubleArray {
@@ -229,8 +229,8 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
         val tok: WordPieceTokenizer
         
         synchronized(modelLock) {
-            interp = interpreter ?: return generateFallbackEmbedding(text)
-            tok = tokenizer ?: return generateFallbackEmbedding(text)
+            interp = interpreter ?: throw IllegalStateException("TFLite interpreter not initialized")
+            tok = tokenizer ?: throw IllegalStateException("Tokenizer not initialized")
         }
         
         try {
@@ -295,15 +295,23 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
             
             return embedding
         } catch (e: Exception) {
-            // Fallback on error
-            return generateFallbackEmbedding(text)
+            // Re-throw error instead of using fallback - fallback provides no semantic value
+            throw IllegalStateException("Failed to generate embedding: ${e.message}", e)
         }
     }
 
+    // DEPRECATED: Fallback embedding removed - provides no semantic value
+    // Keeping method for reference but it should not be called
+    @Deprecated("Fallback embeddings provide no semantic value. Ensure model is downloaded first.")
     private fun generateFallbackEmbedding(text: String): DoubleArray {
+        throw IllegalStateException("Fallback embeddings are disabled. Download the embedding model first using Core.downloadModel('${config.modelId}')")
+    }
+
+    // Original fallback implementation preserved for reference only
+    @Suppress("unused")
+    private fun generateFallbackEmbeddingLegacy(text: String): DoubleArray {
         // Simple word-based embedding using hash functions
-        // This provides basic semantic similarity based on word overlap
-        // Production would use the actual MiniLM TFLite model
+        // WARNING: This provides NO semantic value - just hash-based similarity
         val embedding = DoubleArray(config.embeddingDimensions) { 0.0 }
         
         val words = text.lowercase().split(Regex("\\s+"))

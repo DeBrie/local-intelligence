@@ -38,6 +38,8 @@ function getEventEmitter(): NativeEventEmitter {
   return eventEmitter;
 }
 
+const DEFAULT_MODEL_ID = 'minilm-l6-v2';
+
 export async function initialize(
   config: SemanticSearchConfig = {},
 ): Promise<boolean> {
@@ -49,7 +51,7 @@ export async function initialize(
     databasePath: config.databasePath ?? '',
     tableName: config.tableName ?? 'semantic_index',
     embeddingDimensions: config.embeddingDimensions ?? 384,
-    modelId: config.modelId ?? 'minilm-l6-v2',
+    modelId: config.modelId ?? DEFAULT_MODEL_ID,
   };
 
   const result = await LocalIntelligenceSemanticSearchModule.initialize(
@@ -59,8 +61,64 @@ export async function initialize(
     isInitialized = true;
     currentConfig = config;
     subscribeToModelDownloads(nativeConfig.modelId);
+
+    // Trigger model download in background if not already available
+    triggerModelDownloadIfNeeded(nativeConfig.modelId).catch(() => {
+      // Silently fail - user will get MODEL_NOT_READY error when trying to generate embeddings
+    });
   }
   return result;
+}
+
+/**
+ * Triggers download of the embedding model if it's not already available.
+ * Returns the model path if successful.
+ */
+export async function ensureModelReady(
+  modelId: string = DEFAULT_MODEL_ID,
+): Promise<string> {
+  try {
+    const CoreModule = NativeModules.LocalIntelligenceCore;
+    if (!CoreModule) {
+      throw new Error('Core module not available');
+    }
+
+    // Check if model is already downloaded
+    const statusJson = await CoreModule.getModelStatus(modelId);
+    const status = JSON.parse(statusJson);
+
+    if (status.state === 'ready') {
+      return status.path;
+    }
+
+    // Download the model
+    const resultJson = await CoreModule.downloadModel(modelId);
+    const result = JSON.parse(resultJson);
+    return result.path;
+  } catch (error) {
+    throw new Error(
+      `Failed to download embedding model: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+async function triggerModelDownloadIfNeeded(modelId: string): Promise<void> {
+  try {
+    const CoreModule = NativeModules.LocalIntelligenceCore;
+    if (!CoreModule) return;
+
+    const statusJson = await CoreModule.getModelStatus(modelId);
+    const status = JSON.parse(statusJson);
+
+    if (status.state === 'not_downloaded') {
+      // Start download in background
+      CoreModule.downloadModel(modelId).catch(() => {
+        // Silently fail - user can manually trigger download
+      });
+    }
+  } catch {
+    // Silently fail
+  }
 }
 
 function subscribeToModelDownloads(modelId: string): void {

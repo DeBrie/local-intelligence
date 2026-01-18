@@ -29,9 +29,12 @@ class LocalIntelligencePII: RCTEventEmitter {
     ]
     
     private let regexPatterns: [String: (pattern: String, type: String)] = [
-        "email": ("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "email"),
-        "phone": ("\\b(?:\\+1[-.]?)?\\(?[0-9]{3}\\)?[-.]?[0-9]{3}[-.]?[0-9]{4}\\b", "phone"),
-        "ssn": ("\\b[0-9]{3}[-]?[0-9]{2}[-]?[0-9]{4}\\b", "ssn"),
+        "email_address": ("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "email_address"),
+        "phone_number": ("\\b(?:\\+1[-.]?)?\\(?[0-9]{3}\\)?[-.]?[0-9]{3}[-.]?[0-9]{4}\\b", "phone_number"),
+        // SSN regex: Must have dashes in standard format (XXX-XX-XXXX) or be preceded by SSN/Social Security keywords
+        // First group (001-899, excluding 666) - Second group (01-99) - Third group (0001-9999)
+        // This prevents matching arbitrary 9-digit numbers
+        "us_ssn": ("(?:(?:SSN|Social Security|social security)[:\\s]*)?\\b(?!000|666|9\\d{2})[0-8]\\d{2}-(?!00)\\d{2}-(?!0000)\\d{4}\\b", "us_ssn"),
         "credit_card": ("\\b(?:[0-9]{4}[-\\s]?){3}[0-9]{4}\\b", "credit_card"),
         "ip_address": ("\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b", "ip_address"),
         "url": ("https?://[^\\s]+", "url"),
@@ -113,10 +116,20 @@ class LocalIntelligencePII: RCTEventEmitter {
         }
     }
     
+    // ML-required entity types that need BERT model for accurate detection
+    private let mlRequiredTypes = ["person", "organization", "location", "age", "date_time", "title", "nrp"]
+    
     @objc(detectEntities:withResolver:withRejecter:)
     func detectEntities(_ text: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
         guard isInitialized else {
             reject("NOT_INITIALIZED", "PII module not initialized", nil)
+            return
+        }
+        
+        // Check if user requested ML-required types but model isn't ready
+        let requestedMLTypes = config.enabledTypes.filter { mlRequiredTypes.contains($0) }
+        if !requestedMLTypes.isEmpty && !isModelReady {
+            reject("MODEL_NOT_READY", "PII model not ready. ML-based entity types (\(requestedMLTypes.joined(separator: ", "))) require the BERT model. Call Core.downloadModel('bert-small-pii') first.", nil)
             return
         }
         
@@ -126,49 +139,13 @@ class LocalIntelligencePII: RCTEventEmitter {
             let startTime = CFAbsoluteTimeGetCurrent()
             var entities: [PIIEntity] = []
             
-            // Try BERT model first for better accuracy
+            // Use BERT model for ML-based entity detection
             if self.isModelReady {
                 self.detectWithBERT(text: text, entities: &entities)
             }
             
-            // NLTagger for named entities (fallback when BERT not available or for additional coverage)
-            if !self.isModelReady && self.config.enabledTypes.contains(where: { ["person", "organization", "location"].contains($0) }) {
-                let tagger = NLTagger(tagSchemes: [.nameType])
-                tagger.string = text
-                
-                let options: NLTagger.Options = [.omitWhitespace, .omitPunctuation, .joinNames]
-                
-                tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .nameType, options: options) { tag, range in
-                    guard let tag = tag else { return true }
-                    
-                    let entityType: String?
-                    switch tag {
-                    case .personalName:
-                        entityType = self.config.enabledTypes.contains("person") ? "person" : nil
-                    case .organizationName:
-                        entityType = self.config.enabledTypes.contains("organization") ? "organization" : nil
-                    case .placeName:
-                        entityType = self.config.enabledTypes.contains("location") ? "location" : nil
-                    default:
-                        entityType = nil
-                    }
-                    
-                    if let type = entityType {
-                        let startIdx = text.distance(from: text.startIndex, to: range.lowerBound)
-                        let endIdx = text.distance(from: text.startIndex, to: range.upperBound)
-                        
-                        entities.append(PIIEntity(
-                            type: type,
-                            text: String(text[range]),
-                            startIndex: startIdx,
-                            endIndex: endIdx,
-                            confidence: 0.45  // NLTagger heuristic has lower accuracy
-                        ))
-                    }
-                    
-                    return true
-                }
-            }
+            // NOTE: NLTagger fallback removed - has <50% accuracy and provides unreliable results
+            // Users must download the BERT model for named entity detection
             
             // Regex patterns for structured PII
             for (key, patternInfo) in self.regexPatterns {

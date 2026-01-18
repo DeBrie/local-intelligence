@@ -12,6 +12,15 @@ export {
   getConfig,
 } from './LocalIntelligencePII';
 
+export {
+  PIITypes,
+  DEFAULT_ENABLED_TYPES,
+  ML_REQUIRED_TYPES,
+  REGEX_DETECTABLE_TYPES,
+  PII_MODEL_ID,
+} from './constants';
+export type { PIITypeName } from './constants';
+
 export { useRedactor } from './useRedactor';
 
 export type {

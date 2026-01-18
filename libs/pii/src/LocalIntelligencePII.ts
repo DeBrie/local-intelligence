@@ -38,6 +38,9 @@ function getEventEmitter(): NativeEventEmitter {
   return eventEmitter;
 }
 
+import { PII_MODEL_ID, ML_REQUIRED_TYPES } from './constants';
+import type { PIITypeName } from './constants';
+
 export async function initialize(config: PIIConfig = {}): Promise<boolean> {
   if (isInitialized) {
     return true;
@@ -48,9 +51,9 @@ export async function initialize(config: PIIConfig = {}): Promise<boolean> {
       'person',
       'organization',
       'location',
-      'email',
-      'phone',
-      'ssn',
+      'email_address',
+      'phone_number',
+      'us_ssn',
       'credit_card',
     ],
     redactionChar: config.redactionChar ?? '*',
@@ -72,8 +75,69 @@ export async function initialize(config: PIIConfig = {}): Promise<boolean> {
     }
 
     subscribeToModelDownloads();
+
+    // Check if ML-required types are enabled and trigger model download if needed
+    const enabledTypes = nativeConfig.enabledTypes as PIITypeName[];
+    const needsMLModel = enabledTypes.some((type) =>
+      ML_REQUIRED_TYPES.includes(type),
+    );
+    if (needsMLModel) {
+      // Trigger model download in background if not already available
+      triggerModelDownloadIfNeeded().catch(() => {
+        // Silently fail - user will get MODEL_NOT_READY error when trying to detect
+      });
+    }
   }
   return result;
+}
+
+/**
+ * Triggers download of the PII model if it's not already available.
+ * Returns the model path if successful.
+ */
+export async function ensureModelReady(): Promise<string> {
+  try {
+    const CoreModule = NativeModules.LocalIntelligenceCore;
+    if (!CoreModule) {
+      throw new Error('Core module not available');
+    }
+
+    // Check if model is already downloaded
+    const statusJson = await CoreModule.getModelStatus(PII_MODEL_ID);
+    const status = JSON.parse(statusJson);
+
+    if (status.state === 'ready') {
+      return status.path;
+    }
+
+    // Download the model
+    const resultJson = await CoreModule.downloadModel(PII_MODEL_ID);
+    const result = JSON.parse(resultJson);
+    return result.path;
+  } catch (error) {
+    throw new Error(
+      `Failed to download PII model: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+async function triggerModelDownloadIfNeeded(): Promise<void> {
+  try {
+    const CoreModule = NativeModules.LocalIntelligenceCore;
+    if (!CoreModule) return;
+
+    const statusJson = await CoreModule.getModelStatus(PII_MODEL_ID);
+    const status = JSON.parse(statusJson);
+
+    if (status.state === 'not_downloaded') {
+      // Start download in background
+      CoreModule.downloadModel(PII_MODEL_ID).catch(() => {
+        // Silently fail - user can manually trigger download
+      });
+    }
+  } catch {
+    // Silently fail
+  }
 }
 
 function subscribeToModelDownloads(): void {

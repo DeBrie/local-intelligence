@@ -1,6 +1,7 @@
 import Foundation
 import React
 import CommonCrypto
+import Metal
 
 @objc(LocalIntelligenceCore)
 class LocalIntelligenceCore: RCTEventEmitter {
@@ -449,8 +450,29 @@ class LocalIntelligenceCore: RCTEventEmitter {
     }
     
     private func checkNPUAvailability() -> Bool {
+        // Check for actual Neural Engine presence using Metal device capabilities
+        // Neural Engine (ANE) is available on A11+ chips (iPhone 8/X and later)
         if #available(iOS 15.0, *) {
-            return true
+            // Check if device supports Neural Engine via Core ML
+            // A11 Bionic and later have Neural Engine
+            let processInfo = ProcessInfo.processInfo
+            
+            // Check for specific device capabilities that indicate ANE presence
+            // Devices with A11+ chips have at least 3GB RAM and support Metal 2
+            let ramGB = Double(processInfo.physicalMemory) / (1024 * 1024 * 1024)
+            
+            // A11 Bionic (iPhone 8/X) and later have Neural Engine
+            // These devices have iOS 15+ support and sufficient RAM
+            // We also verify Metal GPU family support as a proxy for modern chips
+            if let device = MTLCreateSystemDefaultDevice() {
+                // Metal GPU Family Apple 4+ indicates A11 or later chip with Neural Engine
+                if device.supportsFamily(.apple4) {
+                    return true
+                }
+            }
+            
+            // Fallback: devices with 3GB+ RAM running iOS 15+ likely have ANE
+            return ramGB >= 3.0
         }
         return false
     }
@@ -470,7 +492,8 @@ class LocalIntelligenceCore: RCTEventEmitter {
         var delegates = ["cpu"]
         delegates.append("gpu")
         if checkNPUAvailability() {
-            delegates.append("nnapi")
+            delegates.append("coreml")  // iOS uses Core ML for Neural Engine, not NNAPI
+            delegates.append("ane")     // Apple Neural Engine
         }
         return delegates
     }

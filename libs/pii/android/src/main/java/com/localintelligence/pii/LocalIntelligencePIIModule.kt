@@ -74,8 +74,11 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
             """\b(?:\+1[-.]?)?\(?[0-9]{3}\)?[-.]?[0-9]{3}[-.]?[0-9]{4}\b""",
             "phone_number"
         ),
+        // SSN regex: Must have dashes in standard format (XXX-XX-XXXX) or be preceded by SSN/Social Security keywords
+        // First group (001-899, excluding 666) - Second group (01-99) - Third group (0001-9999)
+        // This prevents matching arbitrary 9-digit numbers
         "us_ssn" to PatternInfo(
-            """\b[0-9]{3}[-]?[0-9]{2}[-]?[0-9]{4}\b""",
+            """(?:(?:SSN|Social Security|social security)[:\s]*)?(?!000|666|9\d{2})[0-8]\d{2}-(?!00)\d{2}-(?!0000)\d{4}""",
             "us_ssn"
         ),
         "credit_card" to PatternInfo(
@@ -205,10 +208,21 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
         }
     }
 
+    // ML-required entity types that need BERT model for accurate detection
+    private val mlRequiredTypes = listOf("person", "organization", "location", "age", "date_time", "title", "nrp")
+    
     @ReactMethod
     fun detectEntities(text: String, promise: Promise) {
         if (!isInitialized) {
             promise.reject("NOT_INITIALIZED", "PII module not initialized")
+            return
+        }
+        
+        // Check if user requested ML-required types but model isn't ready
+        val requestedMLTypes = config.enabledTypes.filter { mlRequiredTypes.contains(it) }
+        if (requestedMLTypes.isNotEmpty() && !isModelReady) {
+            promise.reject("MODEL_NOT_READY", 
+                "PII model not ready. ML-based entity types (${requestedMLTypes.joinToString(", ")}) require the BERT model. Call Core.downloadModel('bert-small-pii') first.")
             return
         }
 
