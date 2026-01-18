@@ -262,43 +262,9 @@ class LocalIntelligencePII: RCTEventEmitter {
             // First detect entities
             var entities: [PIIEntity] = []
             
-            // NLTagger for named entities
-            if self.config.enabledTypes.contains(where: { ["person", "organization", "location"].contains($0) }) {
-                let tagger = NLTagger(tagSchemes: [.nameType])
-                tagger.string = text
-                
-                let options: NLTagger.Options = [.omitWhitespace, .omitPunctuation, .joinNames]
-                
-                tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .nameType, options: options) { tag, range in
-                    guard let tag = tag else { return true }
-                    
-                    let entityType: String?
-                    switch tag {
-                    case .personalName:
-                        entityType = self.config.enabledTypes.contains("person") ? "person" : nil
-                    case .organizationName:
-                        entityType = self.config.enabledTypes.contains("organization") ? "organization" : nil
-                    case .placeName:
-                        entityType = self.config.enabledTypes.contains("location") ? "location" : nil
-                    default:
-                        entityType = nil
-                    }
-                    
-                    if let type = entityType {
-                        let startIdx = text.distance(from: text.startIndex, to: range.lowerBound)
-                        let endIdx = text.distance(from: text.startIndex, to: range.upperBound)
-                        
-                        entities.append(PIIEntity(
-                            type: type,
-                            text: String(text[range]),
-                            startIndex: startIdx,
-                            endIndex: endIdx,
-                            confidence: 0.85
-                        ))
-                    }
-                    
-                    return true
-                }
+            // Use BERT model for ML-based entity detection (consistent with detectEntities)
+            if self.isModelReady {
+                self.detectWithBERT(text: text, entities: &entities)
             }
             
             // Regex patterns
@@ -416,36 +382,9 @@ class LocalIntelligencePII: RCTEventEmitter {
                     let startTime = CFAbsoluteTimeGetCurrent()
                     var entities: [PIIEntity] = []
                     
-                    // Simplified detection for batch
-                    let tagger = NLTagger(tagSchemes: [.nameType])
-                    tagger.string = text
-                    
-                    let options: NLTagger.Options = [.omitWhitespace, .omitPunctuation, .joinNames]
-                    
-                    tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .nameType, options: options) { tag, range in
-                        guard let tag = tag else { return true }
-                        
-                        let entityType: String?
-                        switch tag {
-                        case .personalName: entityType = "person"
-                        case .organizationName: entityType = "organization"
-                        case .placeName: entityType = "location"
-                        default: entityType = nil
-                        }
-                        
-                        if let type = entityType {
-                            let startIdx = text.distance(from: text.startIndex, to: range.lowerBound)
-                            let endIdx = text.distance(from: text.startIndex, to: range.upperBound)
-                            
-                            entities.append(PIIEntity(
-                                type: type,
-                                text: String(text[range]),
-                                startIndex: startIdx,
-                                endIndex: endIdx,
-                                confidence: 0.85
-                            ))
-                        }
-                        return true
+                    // Use BERT model for ML-based entity detection (consistent with detectEntities)
+                    if self.isModelReady {
+                        self.detectWithBERT(text: text, entities: &entities)
                     }
                     
                     // Regex patterns
