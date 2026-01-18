@@ -162,7 +162,7 @@ class LocalIntelligencePII: RCTEventEmitter {
                             text: String(text[range]),
                             startIndex: startIdx,
                             endIndex: endIdx,
-                            confidence: 0.85
+                            confidence: 0.45  // NLTagger heuristic has lower accuracy
                         ))
                     }
                     

@@ -610,7 +610,7 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
                     text = match,
                     startIndex = matcher.start(),
                     endIndex = matcher.end(),
-                    confidence = if (isModelReady) 0.85 else 0.60
+                    confidence = if (isModelReady) 0.85 else 0.40  // Heuristic has lower accuracy
                 ))
             } else if (!isOrganization && detectPerson) {
                 entities.add(PIIEntity(
@@ -618,7 +618,7 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
                     text = match,
                     startIndex = matcher.start(),
                     endIndex = matcher.end(),
-                    confidence = if (isModelReady) 0.85 else 0.65
+                    confidence = if (isModelReady) 0.85 else 0.45  // Heuristic has lower accuracy
                 ))
             }
         }
@@ -640,7 +640,7 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
                 text = matcher.group(),
                 startIndex = matcher.start(),
                 endIndex = matcher.end(),
-                confidence = if (isModelReady) 0.85 else 0.60
+                confidence = if (isModelReady) 0.85 else 0.40  // Heuristic has lower accuracy
             ))
         }
     }
