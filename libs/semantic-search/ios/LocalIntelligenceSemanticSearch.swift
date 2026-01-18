@@ -193,14 +193,52 @@ class LocalIntelligenceSemanticSearch: NSObject {
         if #available(iOS 13.0, *), let embedding = embeddingModel {
             if let vector = embedding.vector(for: text) {
                 // NLEmbedding returns 512-dimensional vectors
-                // We'll use these directly or pad/truncate to match config
-                return vector
+                // Adjust to match configured dimensions (default 384)
+                return adjustEmbeddingDimensions(vector)
             }
         }
         
         // Fallback: Generate a simple hash-based embedding for older iOS
         // This is a placeholder - production would use Core ML model
         return generateFallbackEmbedding(text: text)
+    }
+    
+    private func adjustEmbeddingDimensions(_ vector: [Double]) -> [Double] {
+        let targetDim = config.embeddingDimensions
+        let sourceDim = vector.count
+        
+        if sourceDim == targetDim {
+            return vector
+        }
+        
+        var adjusted = [Double](repeating: 0.0, count: targetDim)
+        
+        if sourceDim > targetDim {
+            // Truncate: Use PCA-like dimensionality reduction via averaging adjacent dimensions
+            let ratio = Double(sourceDim) / Double(targetDim)
+            for i in 0..<targetDim {
+                let startIdx = Int(Double(i) * ratio)
+                let endIdx = min(Int(Double(i + 1) * ratio), sourceDim)
+                var sum = 0.0
+                for j in startIdx..<endIdx {
+                    sum += vector[j]
+                }
+                adjusted[i] = sum / Double(endIdx - startIdx)
+            }
+        } else {
+            // Pad with zeros (less common case)
+            for i in 0..<sourceDim {
+                adjusted[i] = vector[i]
+            }
+        }
+        
+        // Re-normalize after dimension adjustment
+        let magnitude = sqrt(adjusted.reduce(0) { $0 + $1 * $1 })
+        if magnitude > 0 {
+            adjusted = adjusted.map { $0 / magnitude }
+        }
+        
+        return adjusted
     }
     
     private func generateFallbackEmbedding(text: String) -> [Double] {
