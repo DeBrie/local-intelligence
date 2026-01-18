@@ -1,5 +1,6 @@
 import Foundation
 import React
+import CommonCrypto
 
 @objc(LocalIntelligenceCore)
 class LocalIntelligenceCore: RCTEventEmitter {
@@ -150,12 +151,14 @@ class LocalIntelligenceCore: RCTEventEmitter {
             }
             
             let expectedSize = metadata["size_bytes"] as? Int64 ?? 0
+            let expectedChecksum = metadata["sha256"] as? String
             let delegate = DownloadDelegate(
                 core: self,
                 modelId: modelId,
                 format: format,
                 fileExtension: fileExtension,
                 expectedSize: expectedSize,
+                expectedChecksum: expectedChecksum,
                 metadata: metadata,
                 resolve: resolve,
                 reject: reject
@@ -263,11 +266,11 @@ class LocalIntelligenceCore: RCTEventEmitter {
         ])
     }
     
-    func handleDownloadComplete(modelId: String, location: URL, format: String, fileExtension: String, expectedSize: Int64, metadata: [String: Any], resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    func handleDownloadComplete(modelId: String, location: URL, format: String, fileExtension: String, expectedSize: Int64, expectedChecksum: String?, metadata: [String: Any], resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
         activeDownloads.removeValue(forKey: modelId)
         
         guard let cacheDir = getCacheDirectory() else {
-            resolve("{\"error\": \"Failed to get cache directory\"}")
+            reject("DOWNLOAD_ERROR", "Failed to get cache directory", nil)
             return
         }
         
@@ -291,14 +294,24 @@ class LocalIntelligenceCore: RCTEventEmitter {
             let actualSize = getFileSize(path: destPath)
             if expectedSize > 0 && actualSize != expectedSize {
                 try FileManager.default.removeItem(atPath: destPath)
-                resolve("{\"error\": \"Model file size mismatch: expected \(expectedSize) bytes, got \(actualSize) bytes\"}")
+                reject("DOWNLOAD_ERROR", "Model file size mismatch: expected \(expectedSize) bytes, got \(actualSize) bytes", nil)
                 return
             }
             
             if actualSize < 1024 {
                 try FileManager.default.removeItem(atPath: destPath)
-                resolve("{\"error\": \"Downloaded model file is too small: \(actualSize) bytes\"}")
+                reject("DOWNLOAD_ERROR", "Downloaded model file is too small: \(actualSize) bytes", nil)
                 return
+            }
+            
+            // Verify checksum if provided
+            if let expected = expectedChecksum {
+                let actualChecksum = sha256Hash(fileAt: destURL)
+                if actualChecksum != expected.lowercased() {
+                    try FileManager.default.removeItem(atPath: destPath)
+                    reject("DOWNLOAD_ERROR", "Checksum verification failed: expected \(expected), got \(actualChecksum ?? "nil")", nil)
+                    return
+                }
             }
             
             // Save metadata locally
@@ -321,8 +334,17 @@ class LocalIntelligenceCore: RCTEventEmitter {
             
             resolve("{\"path\": \"\(destPath)\", \"format\": \"\(format)\"}")
         } catch {
-            resolve("{\"error\": \"\(error.localizedDescription)\"}")
+            reject("DOWNLOAD_ERROR", error.localizedDescription, error)
         }
+    }
+    
+    private func sha256Hash(fileAt url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        data.withUnsafeBytes {
+            _ = CC_SHA256($0.baseAddress, CC_LONG(data.count), &hash)
+        }
+        return hash.map { String(format: "%02x", $0) }.joined()
     }
     
     func handleDownloadError(modelId: String, error: Error, reject: @escaping RCTPromiseRejectBlock) {
@@ -460,23 +482,25 @@ class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
     let format: String
     let fileExtension: String
     let expectedSize: Int64
+    let expectedChecksum: String?
     let metadata: [String: Any]
     let resolve: RCTPromiseResolveBlock
     let reject: RCTPromiseRejectBlock
     
-    init(core: LocalIntelligenceCore, modelId: String, format: String, fileExtension: String, expectedSize: Int64, metadata: [String: Any], resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    init(core: LocalIntelligenceCore, modelId: String, format: String, fileExtension: String, expectedSize: Int64, expectedChecksum: String?, metadata: [String: Any], resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
         self.core = core
         self.modelId = modelId
         self.format = format
         self.fileExtension = fileExtension
         self.expectedSize = expectedSize
+        self.expectedChecksum = expectedChecksum
         self.metadata = metadata
         self.resolve = resolve
         self.reject = reject
     }
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        core?.handleDownloadComplete(modelId: modelId, location: location, format: format, fileExtension: fileExtension, expectedSize: expectedSize, metadata: metadata, resolve: resolve, reject: reject)
+        core?.handleDownloadComplete(modelId: modelId, location: location, format: format, fileExtension: fileExtension, expectedSize: expectedSize, expectedChecksum: expectedChecksum, metadata: metadata, resolve: resolve, reject: reject)
     }
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {

@@ -90,11 +90,25 @@ export async function getModelStatus(modelId: string): Promise<ModelStatus> {
   return JSON.parse(resultJson) as ModelStatus;
 }
 
+export interface DownloadOptions {
+  onProgress?: DownloadProgressCallback;
+  maxRetries?: number;
+  retryDelayMs?: number;
+}
+
 export async function downloadModel(
   modelId: string,
-  onProgress?: DownloadProgressCallback,
+  optionsOrCallback?: DownloadOptions | DownloadProgressCallback,
 ): Promise<string> {
   ensureInitialized();
+
+  // Support both old callback-only API and new options API
+  const options: DownloadOptions =
+    typeof optionsOrCallback === 'function'
+      ? { onProgress: optionsOrCallback }
+      : (optionsOrCallback ?? {});
+
+  const { onProgress, maxRetries = 3, retryDelayMs = 1000 } = options;
 
   let subscription: { remove: () => void } | null = null;
 
@@ -110,18 +124,53 @@ export async function downloadModel(
     );
   }
 
-  try {
-    const resultJson = await LocalIntelligenceCoreModule.downloadModel(modelId);
-    const result = JSON.parse(resultJson);
+  let lastError: Error | null = null;
 
-    if (result.error) {
-      throw new ModelDownloadError(modelId, new Error(result.error));
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const resultJson =
+        await LocalIntelligenceCoreModule.downloadModel(modelId);
+      const result = JSON.parse(resultJson);
+      return result.path;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Check if it's a network error worth retrying
+      const isRetryable = isNetworkError(lastError);
+
+      if (!isRetryable || attempt >= maxRetries) {
+        break;
+      }
+
+      // Exponential backoff
+      const delay = retryDelayMs * Math.pow(2, attempt);
+      await sleep(delay);
     }
-
-    return result.path;
-  } finally {
-    subscription?.remove();
   }
+
+  subscription?.remove();
+
+  throw new ModelDownloadError(
+    modelId,
+    lastError ?? new Error('Unknown error'),
+  );
+}
+
+function isNetworkError(error: Error): boolean {
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('network') ||
+    message.includes('timeout') ||
+    message.includes('connection') ||
+    message.includes('offline') ||
+    message.includes('internet') ||
+    message.includes('timed out') ||
+    message.includes('could not connect')
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function cancelDownload(modelId: string): Promise<boolean> {
