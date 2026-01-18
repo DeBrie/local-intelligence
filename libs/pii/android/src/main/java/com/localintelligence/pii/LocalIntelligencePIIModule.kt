@@ -53,16 +53,17 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var isInitialized = false
-    private var isModelReady = false
-    private var isModelDownloading = false
+    @Volatile private var isModelReady = false
+    @Volatile private var isModelDownloading = false
     private var config = PIIConfig()
     private val customPatterns = mutableMapOf<String, CustomPattern>()
     private var stats = PIIStats()
     
     // ONNX Runtime for BERT PII model
-    private var ortEnvironment: OrtEnvironment? = null
-    private var ortSession: OrtSession? = null
-    private var tokenizer: WordPieceTokenizer? = null
+    @Volatile private var ortEnvironment: OrtEnvironment? = null
+    @Volatile private var ortSession: OrtSession? = null
+    @Volatile private var tokenizer: WordPieceTokenizer? = null
+    private val modelLock = Any()
 
     private val regexPatterns = mapOf(
         "email_address" to PatternInfo(
@@ -151,11 +152,32 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
             .emit(eventName, params)
     }
 
+    private var modelDownloadSubscription: Any? = null
+    
     @ReactMethod
-    fun addListener(eventName: String) {}
+    fun addListener(eventName: String) {
+        // Subscribe to model download events from core module
+        if (eventName == "onPIIRedaction" && modelDownloadSubscription == null) {
+            // Will be handled via JS bridge
+        }
+    }
 
     @ReactMethod
     fun removeListeners(count: Int) {}
+    
+    @ReactMethod
+    fun notifyModelDownloaded(modelId: String, path: String) {
+        // Called from JS when core module emits LocalIntelligenceModelDownloaded
+        if (modelId == "bert-small-pii") {
+            val modelFile = File(path)
+            val vocabFile = File(modelFile.parent, "bert-small-pii.vocab.txt")
+            if (modelFile.exists() && vocabFile.exists()) {
+                scope.launch {
+                    loadOnnxModel(modelFile, vocabFile)
+                }
+            }
+        }
+    }
 
     @ReactMethod
     fun initialize(configJson: String, promise: Promise) {
@@ -428,15 +450,26 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
     }
 
     private fun detectWithBERT(text: String, entities: MutableList<PIIEntity>) {
-        val session = ortSession
-        val env = ortEnvironment
-        val tok = tokenizer
+        val session: OrtSession
+        val env: OrtEnvironment
+        val tok: WordPieceTokenizer
         
-        if (session == null || env == null || tok == null) {
-            // Fallback to heuristics if model not loaded
-            detectNamesHeuristic(text, entities)
-            detectAddressesHeuristic(text, entities)
-            return
+        synchronized(modelLock) {
+            session = ortSession ?: run {
+                detectNamesHeuristic(text, entities)
+                detectAddressesHeuristic(text, entities)
+                return
+            }
+            env = ortEnvironment ?: run {
+                detectNamesHeuristic(text, entities)
+                detectAddressesHeuristic(text, entities)
+                return
+            }
+            tok = tokenizer ?: run {
+                detectNamesHeuristic(text, entities)
+                detectAddressesHeuristic(text, entities)
+                return
+            }
         }
         
         try {
@@ -629,20 +662,22 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
     }
     
     private fun loadOnnxModel(modelFile: File, vocabFile: File) {
-        try {
-            // Load tokenizer first
-            tokenizer = WordPieceTokenizer(vocabFile)
-            
-            // Then load ONNX model
-            ortEnvironment = OrtEnvironment.getEnvironment()
-            ortSession = ortEnvironment?.createSession(modelFile.absolutePath)
-            isModelReady = true
-            isModelDownloading = false
-        } catch (e: Exception) {
-            tokenizer = null
-            ortSession = null
-            isModelReady = false
-            isModelDownloading = false
+        synchronized(modelLock) {
+            try {
+                // Load tokenizer first
+                tokenizer = WordPieceTokenizer(vocabFile)
+                
+                // Then load ONNX model
+                ortEnvironment = OrtEnvironment.getEnvironment()
+                ortSession = ortEnvironment?.createSession(modelFile.absolutePath)
+                isModelReady = true
+                isModelDownloading = false
+            } catch (e: Exception) {
+                tokenizer = null
+                ortSession = null
+                isModelReady = false
+                isModelDownloading = false
+            }
         }
     }
     

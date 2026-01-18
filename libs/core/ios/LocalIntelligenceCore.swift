@@ -18,7 +18,7 @@ class LocalIntelligenceCore: RCTEventEmitter {
     }
     
     override func supportedEvents() -> [String]! {
-        return ["LocalIntelligenceDownloadProgress"]
+        return ["LocalIntelligenceDownloadProgress", "LocalIntelligenceModelDownloaded"]
     }
     
     override func startObserving() {
@@ -104,18 +104,81 @@ class LocalIntelligenceCore: RCTEventEmitter {
         }
         
         let cdnBaseUrl = config.cdnBaseUrl ?? "https://cdn.localintelligence.dev/models"
-        let urlString = "\(cdnBaseUrl)/\(modelId)/latest/ios.mlmodelc.zip"
         
-        guard let url = URL(string: urlString) else {
-            reject("INVALID_URL", "Invalid download URL", nil)
+        // First fetch metadata to determine model format
+        let metadataUrlString = "\(cdnBaseUrl)/\(modelId)/latest/metadata.json"
+        guard let metadataUrl = URL(string: metadataUrlString) else {
+            reject("INVALID_URL", "Invalid metadata URL", nil)
             return
         }
         
-        let session = URLSession(configuration: .default, delegate: DownloadDelegate(core: self, modelId: modelId, resolve: resolve, reject: reject), delegateQueue: nil)
-        let task = session.downloadTask(with: url)
-        
-        activeDownloads[modelId] = task
-        task.resume()
+        URLSession.shared.dataTask(with: metadataUrl) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                reject("METADATA_ERROR", "Failed to fetch metadata: \(error.localizedDescription)", error)
+                return
+            }
+            
+            guard let data = data,
+                  let metadata = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                reject("METADATA_ERROR", "Failed to parse metadata", nil)
+                return
+            }
+            
+            // Determine file name based on format - iOS uses ONNX via CoreML or direct ONNX
+            let format = metadata["format"] as? String ?? "onnx"
+            let fileName: String
+            let fileExtension: String
+            
+            switch format {
+            case "coreml":
+                fileName = "ios.mlmodelc.zip"
+                fileExtension = ".mlmodelc"
+            case "onnx":
+                fileName = "model.onnx"
+                fileExtension = ".onnx"
+            default:
+                fileName = "model.onnx"
+                fileExtension = ".onnx"
+            }
+            
+            let urlString = "\(cdnBaseUrl)/\(modelId)/latest/\(fileName)"
+            guard let url = URL(string: urlString) else {
+                reject("INVALID_URL", "Invalid download URL", nil)
+                return
+            }
+            
+            let expectedSize = metadata["size_bytes"] as? Int64 ?? 0
+            let delegate = DownloadDelegate(
+                core: self,
+                modelId: modelId,
+                format: format,
+                fileExtension: fileExtension,
+                expectedSize: expectedSize,
+                metadata: metadata,
+                resolve: resolve,
+                reject: reject
+            )
+            
+            let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+            let task = session.downloadTask(with: url)
+            
+            self.activeDownloads[modelId] = task
+            task.resume()
+            
+            // Also download vocab.txt if available
+            let vocabUrlString = "\(cdnBaseUrl)/\(modelId)/latest/vocab.txt"
+            if let vocabUrl = URL(string: vocabUrlString) {
+                URLSession.shared.dataTask(with: vocabUrl) { vocabData, _, _ in
+                    if let vocabData = vocabData,
+                       let cacheDir = self.getCacheDirectory() {
+                        let vocabPath = (cacheDir as NSString).appendingPathComponent("\(modelId).vocab.txt")
+                        try? vocabData.write(to: URL(fileURLWithPath: vocabPath))
+                    }
+                }.resume()
+            }
+        }.resume()
     }
     
     @objc(cancelDownload:withResolver:withRejecter:)
@@ -200,13 +263,15 @@ class LocalIntelligenceCore: RCTEventEmitter {
         ])
     }
     
-    func handleDownloadComplete(modelId: String, location: URL, resolve: @escaping RCTPromiseResolveBlock) {
+    func handleDownloadComplete(modelId: String, location: URL, format: String, fileExtension: String, expectedSize: Int64, metadata: [String: Any], resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
         activeDownloads.removeValue(forKey: modelId)
         
-        guard let destPath = getModelPath(modelId: modelId) else {
-            resolve("{\"error\": \"Failed to get destination path\"}")
+        guard let cacheDir = getCacheDirectory() else {
+            resolve("{\"error\": \"Failed to get cache directory\"}")
             return
         }
+        
+        let destPath = (cacheDir as NSString).appendingPathComponent("\(modelId)\(fileExtension)")
         
         do {
             let destURL = URL(fileURLWithPath: destPath)
@@ -222,11 +287,39 @@ class LocalIntelligenceCore: RCTEventEmitter {
             
             try FileManager.default.moveItem(at: location, to: destURL)
             
-            let fileSize = getFileSize(path: destPath)
-            let status = ModelStatus(state: "ready", progress: nil, sizeBytes: fileSize, path: destPath, message: nil)
+            // Validate file size
+            let actualSize = getFileSize(path: destPath)
+            if expectedSize > 0 && actualSize != expectedSize {
+                try FileManager.default.removeItem(atPath: destPath)
+                resolve("{\"error\": \"Model file size mismatch: expected \(expectedSize) bytes, got \(actualSize) bytes\"}")
+                return
+            }
+            
+            if actualSize < 1024 {
+                try FileManager.default.removeItem(atPath: destPath)
+                resolve("{\"error\": \"Downloaded model file is too small: \(actualSize) bytes\"}")
+                return
+            }
+            
+            // Save metadata locally
+            let metadataPath = (cacheDir as NSString).appendingPathComponent("\(modelId).metadata.json")
+            if let metadataData = try? JSONSerialization.data(withJSONObject: metadata) {
+                try metadataData.write(to: URL(fileURLWithPath: metadataPath))
+            }
+            
+            let status = ModelStatus(state: "ready", progress: nil, sizeBytes: actualSize, path: destPath, message: nil)
             modelCache[modelId] = status
             
-            resolve("{\"path\": \"\(destPath)\"}")
+            // Emit model downloaded event
+            if hasListeners {
+                sendEvent(withName: "LocalIntelligenceModelDownloaded", body: [
+                    "modelId": modelId,
+                    "path": destPath,
+                    "format": format
+                ])
+            }
+            
+            resolve("{\"path\": \"\(destPath)\", \"format\": \"\(format)\"}")
         } catch {
             resolve("{\"error\": \"\(error.localizedDescription)\"}")
         }
@@ -301,18 +394,26 @@ class LocalIntelligenceCore: RCTEventEmitter {
 class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
     weak var core: LocalIntelligenceCore?
     let modelId: String
+    let format: String
+    let fileExtension: String
+    let expectedSize: Int64
+    let metadata: [String: Any]
     let resolve: RCTPromiseResolveBlock
     let reject: RCTPromiseRejectBlock
     
-    init(core: LocalIntelligenceCore, modelId: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    init(core: LocalIntelligenceCore, modelId: String, format: String, fileExtension: String, expectedSize: Int64, metadata: [String: Any], resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
         self.core = core
         self.modelId = modelId
+        self.format = format
+        self.fileExtension = fileExtension
+        self.expectedSize = expectedSize
+        self.metadata = metadata
         self.resolve = resolve
         self.reject = reject
     }
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        core?.handleDownloadComplete(modelId: modelId, location: location, resolve: resolve)
+        core?.handleDownloadComplete(modelId: modelId, location: location, format: format, fileExtension: fileExtension, expectedSize: expectedSize, metadata: metadata, resolve: resolve, reject: reject)
     }
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {

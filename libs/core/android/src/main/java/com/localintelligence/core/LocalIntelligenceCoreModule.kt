@@ -128,6 +128,7 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
                 connection.connect()
 
                 val totalBytes = connection.contentLength.toLong()
+                val expectedSize = metadata.optLong("size_bytes", 0)
                 val cacheDir = getCacheDirectory() ?: throw Exception("Failed to get cache directory")
                 val destPath = File(cacheDir, "$modelId$fileExtension").absolutePath
                 val destFile = File(destPath)
@@ -149,6 +150,19 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
                             }
                         }
                     }
+                }
+                
+                // Validate downloaded file size
+                val actualSize = destFile.length()
+                if (expectedSize > 0 && actualSize != expectedSize) {
+                    destFile.delete()
+                    throw Exception("Model file size mismatch: expected $expectedSize bytes, got $actualSize bytes")
+                }
+                
+                // Validate minimum file size (models should be at least 1KB)
+                if (actualSize < 1024) {
+                    destFile.delete()
+                    throw Exception("Downloaded model file is too small: $actualSize bytes")
                 }
                 
                 // Also save metadata locally
@@ -178,6 +192,20 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
                 val status = ModelStatus("ready", null, destFile.length(), destPath, null)
                 modelCache[modelId] = status
                 activeDownloads.remove(modelId)
+                
+                // Emit model downloaded event for other modules to listen
+                if (listenerCount > 0) {
+                    val params = Arguments.createMap().apply {
+                        putString("modelId", modelId)
+                        putString("path", destPath)
+                        putString("format", format)
+                    }
+                    withContext(Dispatchers.Main) {
+                        reactApplicationContext
+                            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                            .emit("LocalIntelligenceModelDownloaded", params)
+                    }
+                }
 
                 withContext(Dispatchers.Main) {
                     promise.resolve(JSONObject().put("path", destPath).put("format", format).toString())

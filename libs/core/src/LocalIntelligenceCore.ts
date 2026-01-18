@@ -5,8 +5,13 @@ import type {
   ModelStatus,
   DownloadProgress,
   DownloadProgressCallback,
+  ModelMetadata,
 } from './types';
-import { InitializationError, ModelDownloadError } from './errors';
+import {
+  InitializationError,
+  ModelDownloadError,
+  NetworkError,
+} from './errors';
 
 const LINKING_ERROR =
   `The package '@local-intelligence/core' doesn't seem to be linked. Make sure: \n\n` +
@@ -145,6 +150,86 @@ export function isReady(): boolean {
 
 export function getConfig(): CoreConfig {
   return { ...currentConfig };
+}
+
+export type ModelDownloadedCallback = (event: {
+  modelId: string;
+  path: string;
+  format: string;
+}) => void;
+
+const modelDownloadedListeners: ModelDownloadedCallback[] = [];
+
+export function onModelDownloaded(
+  callback: ModelDownloadedCallback,
+): () => void {
+  modelDownloadedListeners.push(callback);
+
+  // Set up native event listener if this is the first subscriber
+  if (modelDownloadedListeners.length === 1) {
+    const emitter = getEventEmitter();
+    emitter.addListener('LocalIntelligenceModelDownloaded', (event) => {
+      modelDownloadedListeners.forEach((listener) => listener(event));
+    });
+  }
+
+  return () => {
+    const index = modelDownloadedListeners.indexOf(callback);
+    if (index > -1) {
+      modelDownloadedListeners.splice(index, 1);
+    }
+  };
+}
+
+export async function getModelMetadata(
+  modelId: string,
+): Promise<ModelMetadata> {
+  const cdnBaseUrl =
+    currentConfig.cdnBaseUrl || 'https://cdn.localintelligence.dev/models';
+  const metadataUrl = `${cdnBaseUrl}/${modelId}/latest/metadata.json`;
+
+  try {
+    const response = await fetch(metadataUrl);
+    if (!response.ok) {
+      throw new NetworkError(
+        metadataUrl,
+        `Failed to fetch metadata: ${response.status}`,
+        response.status,
+      );
+    }
+    return (await response.json()) as ModelMetadata;
+  } catch (error) {
+    if (error instanceof NetworkError) throw error;
+    throw new NetworkError(
+      metadataUrl,
+      `Network error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+export async function checkForModelUpdate(modelId: string): Promise<{
+  hasUpdate: boolean;
+  currentVersion?: string;
+  latestVersion: string;
+}> {
+  const metadata = await getModelMetadata(modelId);
+  const status = await getModelStatus(modelId);
+
+  // Check if we have a local version
+  if (status.state !== 'ready') {
+    return {
+      hasUpdate: true,
+      latestVersion: metadata.version,
+    };
+  }
+
+  // Read local metadata to compare versions
+  // For now, we'll assume any downloaded model needs update check via metadata
+  return {
+    hasUpdate: false, // Would compare versions here
+    currentVersion: metadata.version,
+    latestVersion: metadata.version,
+  };
 }
 
 function ensureInitialized(): void {

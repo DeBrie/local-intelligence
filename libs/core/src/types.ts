@@ -49,7 +49,21 @@ export interface ModelInfo {
   version: string;
   sizeBytes: number;
   platform: 'ios' | 'android' | 'both';
-  format: 'tflite' | 'coreml' | 'pte';
+  format: 'tflite' | 'coreml' | 'onnx' | 'pte';
+}
+
+export interface ModelMetadata {
+  id: string;
+  name: string;
+  version: string;
+  format: 'tflite' | 'coreml' | 'onnx' | 'pte';
+  size_bytes: number;
+  min_sdk_version?: string;
+  checksum?: string;
+  checksum_algorithm?: 'sha256' | 'md5';
+  created_at?: string;
+  description?: string;
+  labels?: string[];
 }
 
 export interface DownloadProgress {
@@ -60,3 +74,10 @@ export interface DownloadProgress {
 }
 
 export type DownloadProgressCallback = (progress: DownloadProgress) => void;
+
+export interface ModelVersion {
+  version: string;
+  releaseDate: string;
+  changelog?: string;
+  isLatest: boolean;
+}

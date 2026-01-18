@@ -60,3 +60,58 @@ export class InitializationError extends LocalIntelligenceError {
     this.name = 'InitializationError';
   }
 }
+
+export class ModelValidationError extends LocalIntelligenceError {
+  modelId: string;
+  expectedSize?: number;
+  actualSize?: number;
+
+  constructor(
+    modelId: string,
+    message: string,
+    expectedSize?: number,
+    actualSize?: number,
+  ) {
+    super(message, 'MODEL_VALIDATION_ERROR');
+    this.name = 'ModelValidationError';
+    this.modelId = modelId;
+    this.expectedSize = expectedSize;
+    this.actualSize = actualSize;
+  }
+}
+
+export class NetworkError extends LocalIntelligenceError {
+  url: string;
+  statusCode?: number;
+
+  constructor(url: string, message: string, statusCode?: number) {
+    super(message, 'NETWORK_ERROR');
+    this.name = 'NetworkError';
+    this.url = url;
+    this.statusCode = statusCode;
+  }
+}
+
+export class TokenizerError extends LocalIntelligenceError {
+  constructor(message: string) {
+    super(message, 'TOKENIZER_ERROR');
+    this.name = 'TokenizerError';
+  }
+}
+
+// Error codes for native module errors
+export const ErrorCodes = {
+  NOT_INITIALIZED: 'NOT_INITIALIZED',
+  MODEL_NOT_FOUND: 'MODEL_NOT_FOUND',
+  MODEL_DOWNLOAD_ERROR: 'MODEL_DOWNLOAD_ERROR',
+  MODEL_VALIDATION_ERROR: 'MODEL_VALIDATION_ERROR',
+  NETWORK_ERROR: 'NETWORK_ERROR',
+  INFERENCE_ERROR: 'INFERENCE_ERROR',
+  TOKENIZER_ERROR: 'TOKENIZER_ERROR',
+  HARDWARE_NOT_SUPPORTED: 'HARDWARE_NOT_SUPPORTED',
+  INITIALIZATION_ERROR: 'INITIALIZATION_ERROR',
+  INVALID_INPUT: 'INVALID_INPUT',
+  TIMEOUT: 'TIMEOUT',
+} as const;
+
+export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

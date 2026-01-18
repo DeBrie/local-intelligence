@@ -61,6 +61,20 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
 
     @ReactMethod
     fun removeListeners(count: Int) {}
+    
+    @ReactMethod
+    fun notifyModelDownloaded(modelId: String, path: String) {
+        // Called from JS when core module emits LocalIntelligenceModelDownloaded
+        if (modelId == config.modelId) {
+            val modelFile = File(path)
+            val vocabFile = File(modelFile.parent, "${config.modelId}.vocab.txt")
+            if (modelFile.exists() && vocabFile.exists()) {
+                scope.launch {
+                    loadModel(modelFile, vocabFile)
+                }
+            }
+        }
+    }
 
     @ReactMethod
     fun initialize(configJson: String, promise: Promise) {
@@ -211,39 +225,64 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
     }
 
     private fun generateWithTFLite(text: String): DoubleArray {
-        val interp = interpreter ?: return generateFallbackEmbedding(text)
-        val tok = tokenizer ?: return generateFallbackEmbedding(text)
+        val interp: Interpreter
+        val tok: WordPieceTokenizer
+        
+        synchronized(modelLock) {
+            interp = interpreter ?: return generateFallbackEmbedding(text)
+            tok = tokenizer ?: return generateFallbackEmbedding(text)
+        }
         
         try {
             // Tokenize text using proper WordPiece tokenizer
             val maxLength = 256
             val tokenized = tok.tokenize(text, maxLength)
             
-            // Prepare input tensors
-            val inputIds = Array(1) { tokenized.inputIds }
-            val attentionMask = Array(1) { tokenized.attentionMask }
+            // Prepare input tensors as proper 2D int arrays [batch_size, seq_length]
+            val inputIds = Array(1) { IntArray(maxLength) { i -> tokenized.inputIds[i] } }
+            val attentionMask = Array(1) { IntArray(maxLength) { i -> tokenized.attentionMask[i] } }
             
-            // Prepare output tensor (batch_size=1, sequence_length, hidden_size=384)
-            val outputShape = interp.getOutputTensor(0).shape()
-            val outputBuffer = Array(1) { Array(outputShape[1]) { FloatArray(outputShape[2]) } }
+            // Get output shape from interpreter
+            val outputTensor = interp.getOutputTensor(0)
+            val outputShape = outputTensor.shape()
+            
+            // Output shape could be [1, seq_len, hidden_size] or [1, hidden_size]
+            val output: Any = if (outputShape.size == 3) {
+                Array(1) { Array(outputShape[1]) { FloatArray(outputShape[2]) } }
+            } else {
+                Array(1) { FloatArray(outputShape[1]) }
+            }
             
             // Run inference
-            interp.runForMultipleInputsOutputs(arrayOf(inputIds, attentionMask), mapOf(0 to outputBuffer))
+            interp.runForMultipleInputsOutputs(arrayOf(inputIds, attentionMask), mapOf(0 to output))
             
-            // Mean pooling over non-padding tokens
+            // Extract embeddings based on output shape
             val embedding = DoubleArray(config.embeddingDimensions)
-            val seqLen = tokenized.tokenCount.coerceAtMost(outputShape[1])
             
-            for (dim in 0 until config.embeddingDimensions) {
-                var sum = 0.0
-                var count = 0
-                for (seq in 0 until seqLen) {
-                    if (tokenized.attentionMask[seq] == 1) {
-                        sum += outputBuffer[0][seq][dim].toDouble()
-                        count++
+            if (outputShape.size == 3) {
+                // [1, seq_len, hidden_size] - need mean pooling
+                @Suppress("UNCHECKED_CAST")
+                val output3d = output as Array<Array<FloatArray>>
+                val seqLen = tokenized.tokenCount.coerceAtMost(outputShape[1])
+                
+                for (dim in 0 until config.embeddingDimensions.coerceAtMost(outputShape[2])) {
+                    var sum = 0.0
+                    var count = 0
+                    for (seq in 0 until seqLen) {
+                        if (tokenized.attentionMask[seq] == 1) {
+                            sum += output3d[0][seq][dim].toDouble()
+                            count++
+                        }
                     }
+                    embedding[dim] = if (count > 0) sum / count else 0.0
                 }
-                embedding[dim] = if (count > 0) sum / count else 0.0
+            } else {
+                // [1, hidden_size] - already pooled
+                @Suppress("UNCHECKED_CAST")
+                val output2d = output as Array<FloatArray>
+                for (dim in 0 until config.embeddingDimensions.coerceAtMost(outputShape[1])) {
+                    embedding[dim] = output2d[0][dim].toDouble()
+                }
             }
             
             // L2 normalize
@@ -331,29 +370,31 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
     }
     
     private fun loadModel(modelFile: File, vocabFile: File) {
-        try {
-            // Load tokenizer first
-            tokenizer = WordPieceTokenizer(vocabFile)
-            
-            // Try GPU delegate first
+        synchronized(modelLock) {
             try {
-                gpuDelegate = GpuDelegate()
-                val options = Interpreter.Options().addDelegate(gpuDelegate)
-                interpreter = Interpreter(loadModelFile(modelFile), options)
+                // Load tokenizer first
+                tokenizer = WordPieceTokenizer(vocabFile)
+                
+                // Try GPU delegate first
+                try {
+                    gpuDelegate = GpuDelegate()
+                    val options = Interpreter.Options().addDelegate(gpuDelegate)
+                    interpreter = Interpreter(loadModelFile(modelFile), options)
+                } catch (e: Exception) {
+                    // Fallback to CPU
+                    gpuDelegate?.close()
+                    gpuDelegate = null
+                    interpreter = Interpreter(loadModelFile(modelFile))
+                }
+                
+                isModelReady = true
+                isModelDownloading = false
             } catch (e: Exception) {
-                // Fallback to CPU
-                gpuDelegate?.close()
-                gpuDelegate = null
-                interpreter = Interpreter(loadModelFile(modelFile))
+                tokenizer = null
+                interpreter = null
+                isModelReady = false
+                isModelDownloading = false
             }
-            
-            isModelReady = true
-            isModelDownloading = false
-        } catch (e: Exception) {
-            tokenizer = null
-            interpreter = null
-            isModelReady = false
-            isModelDownloading = false
         }
     }
     
