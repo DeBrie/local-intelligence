@@ -65,7 +65,7 @@ Models are hosted on Cloudflare R2 and downloaded automatically when first neede
 | `minilm-l6-v2`    | semantic-search | TFLite | 45 MB | [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)                   |
 | `distilbert-sst2` | sentiment       | ONNX   | 67 MB | [distilbert-base-uncased-finetuned-sst-2-english](https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english) |
 
-> **⚠️ Cross-Platform Note:** iOS semantic-search uses Apple's NLEmbedding (512-dim) while Android uses MiniLM-L6-v2 TFLite (384-dim). Embeddings are **not compatible across platforms** - indexes built on one platform cannot be searched from another. See [X-Plat-Embeddings.md](../X-Plat-Embeddings.md) for details.
+> **⚠️ Cross-Platform Note:** iOS semantic-search uses Apple's NLEmbedding (512-dim) while Android uses MiniLM-L6-v2 TFLite (384-dim). Embeddings are **not compatible across platforms** - indexes built on one platform cannot be searched from another.
 
 ## Features
 
