@@ -264,25 +264,89 @@ export async function checkForModelUpdate(modelId: string): Promise<{
   hasUpdate: boolean;
   currentVersion?: string;
   latestVersion: string;
+  changelog?: string;
 }> {
-  const metadata = await getModelMetadata(modelId);
+  ensureInitialized();
+
+  // Fetch latest metadata from CDN
+  const latestMetadata = await getModelMetadata(modelId);
   const status = await getModelStatus(modelId);
 
   // Check if we have a local version
   if (status.state !== 'ready') {
     return {
       hasUpdate: true,
-      latestVersion: metadata.version,
+      latestVersion: latestMetadata.version,
     };
   }
 
   // Read local metadata to compare versions
-  // For now, we'll assume any downloaded model needs update check via metadata
-  return {
-    hasUpdate: false, // Would compare versions here
-    currentVersion: metadata.version,
-    latestVersion: metadata.version,
-  };
+  try {
+    const localMetadataJson =
+      await LocalIntelligenceCoreModule.getLocalModelMetadata(modelId);
+    const localMetadata = JSON.parse(localMetadataJson) as {
+      version?: string;
+    };
+
+    const currentVersion = localMetadata.version || '0.0.0';
+    const latestVersion = latestMetadata.version;
+
+    // Compare semantic versions
+    const hasUpdate = compareVersions(currentVersion, latestVersion) < 0;
+
+    return {
+      hasUpdate,
+      currentVersion,
+      latestVersion,
+    };
+  } catch {
+    // No local metadata, assume update needed
+    return {
+      hasUpdate: true,
+      latestVersion: latestMetadata.version,
+    };
+  }
+}
+
+/**
+ * Compare two semantic version strings.
+ * Returns: -1 if v1 < v2, 0 if v1 === v2, 1 if v1 > v2
+ */
+function compareVersions(v1: string, v2: string): number {
+  const parts1 = v1.split('.').map((p) => parseInt(p, 10) || 0);
+  const parts2 = v2.split('.').map((p) => parseInt(p, 10) || 0);
+
+  const maxLen = Math.max(parts1.length, parts2.length);
+  for (let i = 0; i < maxLen; i++) {
+    const p1 = parts1[i] || 0;
+    const p2 = parts2[i] || 0;
+    if (p1 < p2) return -1;
+    if (p1 > p2) return 1;
+  }
+  return 0;
+}
+
+/**
+ * Update a model to the latest version.
+ * Downloads the new version and replaces the existing one.
+ */
+export async function updateModel(
+  modelId: string,
+  onProgress?: DownloadProgressCallback,
+): Promise<{ path: string; version: string }> {
+  ensureInitialized();
+
+  const updateInfo = await checkForModelUpdate(modelId);
+  if (!updateInfo.hasUpdate) {
+    const status = await getModelStatus(modelId);
+    if (status.state === 'ready') {
+      return { path: status.path, version: updateInfo.currentVersion! };
+    }
+  }
+
+  // Download the latest version
+  const path = await downloadModel(modelId, onProgress);
+  return { path, version: updateInfo.latestVersion };
 }
 
 function ensureInitialized(): void {

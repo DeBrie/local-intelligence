@@ -293,6 +293,28 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
+    fun getLocalModelMetadata(modelId: String, promise: Promise) {
+        try {
+            val cacheDir = getCacheDirectory()
+            if (cacheDir == null) {
+                promise.reject("METADATA_ERROR", "Failed to get cache directory")
+                return
+            }
+            
+            val metadataFile = File(cacheDir, "$modelId.metadata.json")
+            if (!metadataFile.exists()) {
+                promise.reject("METADATA_NOT_FOUND", "No local metadata found for model $modelId")
+                return
+            }
+            
+            val jsonString = metadataFile.readText()
+            promise.resolve(jsonString)
+        } catch (e: Exception) {
+            promise.reject("METADATA_ERROR", "Failed to read metadata: ${e.message}", e)
+        }
+    }
+
+    @ReactMethod
     fun addListener(eventName: String) {
         listenerCount++
     }

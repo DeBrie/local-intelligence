@@ -9,6 +9,10 @@ export {
   getCacheSize,
   isReady,
   getConfig,
+  checkForModelUpdate,
+  updateModel,
+  getModelMetadata,
+  onModelDownloaded,
 } from './LocalIntelligenceCore';
 
 export type {

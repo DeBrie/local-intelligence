@@ -441,6 +441,29 @@ class LocalIntelligenceCore: RCTEventEmitter {
         resolve(false)
     }
     
+    @objc(getLocalModelMetadata:withResolver:withRejecter:)
+    func getLocalModelMetadata(modelId: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        guard let cacheDir = getCacheDirectory() else {
+            reject("METADATA_ERROR", "Failed to get cache directory", nil)
+            return
+        }
+        
+        let metadataPath = (cacheDir as NSString).appendingPathComponent("\(modelId).metadata.json")
+        
+        guard FileManager.default.fileExists(atPath: metadataPath) else {
+            reject("METADATA_NOT_FOUND", "No local metadata found for model \(modelId)", nil)
+            return
+        }
+        
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: metadataPath))
+            let jsonString = String(data: data, encoding: .utf8) ?? "{}"
+            resolve(jsonString)
+        } catch {
+            reject("METADATA_ERROR", "Failed to read metadata: \(error.localizedDescription)", error)
+        }
+    }
+    
     private func getFileSize(path: String) -> Int64 {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
               let size = attrs[.size] as? Int64 else {

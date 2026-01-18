@@ -1,0 +1,86 @@
+name: Model Benchmarks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'libs/pii/**'
+      - 'libs/semantic-search/**'
+      - 'libs/sentiment/**'
+      - 'benchmarks/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'libs/pii/**'
+      - 'libs/semantic-search/**'
+      - 'libs/sentiment/**'
+      - 'benchmarks/**'
+  schedule:
+    # Run weekly on Sundays at midnight UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npm run build
+
+      - name: Run PII benchmark
+        id: pii_benchmark
+        run: npm run benchmark:pii
+        continue-on-error: true
+
+      - name: Run Sentiment benchmark
+        id: sentiment_benchmark
+        run: npm run benchmark:sentiment
+        continue-on-error: true
+
+      - name: Run Semantic benchmark
+        id: semantic_benchmark
+        run: npm run benchmark:semantic
+        continue-on-error: true
+
+      - name: Generate benchmark report
+        run: |
+          echo "# Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## PII Detection" >> $GITHUB_STEP_SUMMARY
+          echo "Status: ${{ steps.pii_benchmark.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Sentiment Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "Status: ${{ steps.sentiment_benchmark.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Semantic Search" >> $GITHUB_STEP_SUMMARY
+          echo "Status: ${{ steps.semantic_benchmark.outcome }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check benchmark thresholds
+        run: |
+          if [ "${{ steps.pii_benchmark.outcome }}" == "failure" ] || \
+             [ "${{ steps.sentiment_benchmark.outcome }}" == "failure" ] || \
+             [ "${{ steps.semantic_benchmark.outcome }}" == "failure" ]; then
+            echo "One or more benchmarks failed to meet minimum thresholds"
+            exit 1
+          fi
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: benchmarks/results/
+          retention-days: 30
