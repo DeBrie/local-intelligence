@@ -10,9 +10,11 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 @ReactModule(name = LocalIntelligenceCoreModule.NAME)
 class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
@@ -164,6 +166,16 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
                 if (actualSize < 1024) {
                     destFile.delete()
                     throw Exception("Downloaded model file is too small: $actualSize bytes")
+                }
+                
+                // Verify SHA256 checksum if provided
+                val expectedChecksum = metadata.optString("sha256", null)
+                if (expectedChecksum != null && expectedChecksum.isNotEmpty()) {
+                    val actualChecksum = calculateSHA256(destFile)
+                    if (!actualChecksum.equals(expectedChecksum, ignoreCase = true)) {
+                        destFile.delete()
+                        throw Exception("Checksum verification failed: expected $expectedChecksum, got $actualChecksum")
+                    }
                 }
                 
                 // Also save metadata locally
@@ -409,6 +421,18 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
             delegates.put("nnapi")
         }
         return delegates
+    }
+    
+    private fun calculateSHA256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { fis ->
+            val buffer = ByteArray(8192)
+            var bytesRead: Int
+            while (fis.read(buffer).also { bytesRead = it } != -1) {
+                digest.update(buffer, 0, bytesRead)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     override fun invalidate() {
