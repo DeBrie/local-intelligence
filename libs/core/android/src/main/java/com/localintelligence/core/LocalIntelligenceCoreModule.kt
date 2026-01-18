@@ -154,6 +154,26 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
                 // Also save metadata locally
                 val metadataPath = File(cacheDir, "$modelId.metadata.json")
                 metadataPath.writeText(metadataJson)
+                
+                // Download vocab.txt if available (for tokenizer)
+                try {
+                    val vocabUrl = URL("${cfg.cdnBaseUrl}/$modelId/latest/vocab.txt")
+                    val vocabConnection = vocabUrl.openConnection() as HttpURLConnection
+                    vocabConnection.requestMethod = "GET"
+                    vocabConnection.connect()
+                    
+                    if (vocabConnection.responseCode == 200) {
+                        val vocabPath = File(cacheDir, "$modelId.vocab.txt")
+                        vocabConnection.inputStream.use { input ->
+                            FileOutputStream(vocabPath).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+                    vocabConnection.disconnect()
+                } catch (e: Exception) {
+                    // Vocab download is optional, continue without it
+                }
 
                 val status = ModelStatus("ready", null, destFile.length(), destPath, null)
                 modelCache[modelId] = status

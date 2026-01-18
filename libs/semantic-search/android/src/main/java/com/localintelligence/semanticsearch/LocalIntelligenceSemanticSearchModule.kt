@@ -2,6 +2,7 @@ package com.localintelligence.semanticsearch
 
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.localintelligence.core.WordPieceTokenizer
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,12 +26,14 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var isInitialized = false
-    private var isModelReady = false
-    private var isModelDownloading = false
+    @Volatile private var isModelReady = false
+    @Volatile private var isModelDownloading = false
     private var config = SemanticSearchConfig()
     private var stats = EmbeddingStats()
-    private var interpreter: Interpreter? = null
+    @Volatile private var interpreter: Interpreter? = null
     private var gpuDelegate: GpuDelegate? = null
+    @Volatile private var tokenizer: WordPieceTokenizer? = null
+    private val modelLock = Any()
 
     data class SemanticSearchConfig(
         var databasePath: String = "",
@@ -209,44 +212,38 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
 
     private fun generateWithTFLite(text: String): DoubleArray {
         val interp = interpreter ?: return generateFallbackEmbedding(text)
+        val tok = tokenizer ?: return generateFallbackEmbedding(text)
         
         try {
-            // Tokenize text - simple whitespace tokenization with padding
-            // MiniLM expects input_ids and attention_mask
+            // Tokenize text using proper WordPiece tokenizer
             val maxLength = 256
-            val tokens = tokenizeText(text, maxLength)
+            val tokenized = tok.tokenize(text, maxLength)
             
             // Prepare input tensors
-            val inputIds = Array(1) { IntArray(maxLength) }
-            val attentionMask = Array(1) { IntArray(maxLength) }
-            
-            for (i in tokens.indices) {
-                inputIds[0][i] = tokens[i]
-                attentionMask[0][i] = 1
-            }
+            val inputIds = Array(1) { tokenized.inputIds }
+            val attentionMask = Array(1) { tokenized.attentionMask }
             
             // Prepare output tensor (batch_size=1, sequence_length, hidden_size=384)
             val outputShape = interp.getOutputTensor(0).shape()
             val outputBuffer = Array(1) { Array(outputShape[1]) { FloatArray(outputShape[2]) } }
             
             // Run inference
-            val inputs = mapOf(
-                "input_ids" to inputIds,
-                "attention_mask" to attentionMask
-            )
-            val outputs = mapOf(0 to outputBuffer)
-            interp.runForMultipleInputsOutputs(arrayOf(inputIds, attentionMask), outputs)
+            interp.runForMultipleInputsOutputs(arrayOf(inputIds, attentionMask), mapOf(0 to outputBuffer))
             
-            // Mean pooling over sequence dimension
+            // Mean pooling over non-padding tokens
             val embedding = DoubleArray(config.embeddingDimensions)
-            val seqLen = tokens.size.coerceAtMost(outputShape[1])
+            val seqLen = tokenized.tokenCount.coerceAtMost(outputShape[1])
             
             for (dim in 0 until config.embeddingDimensions) {
                 var sum = 0.0
+                var count = 0
                 for (seq in 0 until seqLen) {
-                    sum += outputBuffer[0][seq][dim].toDouble()
+                    if (tokenized.attentionMask[seq] == 1) {
+                        sum += outputBuffer[0][seq][dim].toDouble()
+                        count++
+                    }
                 }
-                embedding[dim] = sum / seqLen
+                embedding[dim] = if (count > 0) sum / count else 0.0
             }
             
             // L2 normalize
@@ -262,33 +259,6 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
             // Fallback on error
             return generateFallbackEmbedding(text)
         }
-    }
-    
-    private fun tokenizeText(text: String, maxLength: Int): List<Int> {
-        // Simple word-piece-like tokenization
-        // In production, would use proper tokenizer from model metadata
-        val words = text.lowercase().split(Regex("\\s+"))
-        val tokens = mutableListOf<Int>()
-        
-        // [CLS] token
-        tokens.add(101)
-        
-        for (word in words) {
-            if (tokens.size >= maxLength - 1) break
-            // Simple hash-based token ID (placeholder for real vocab lookup)
-            val tokenId = (Math.abs(word.hashCode()) % 30000) + 1000
-            tokens.add(tokenId)
-        }
-        
-        // [SEP] token
-        tokens.add(102)
-        
-        // Pad to maxLength
-        while (tokens.size < maxLength) {
-            tokens.add(0)
-        }
-        
-        return tokens.take(maxLength)
     }
 
     private fun generateFallbackEmbedding(text: String): DoubleArray {
@@ -345,12 +315,13 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
     private fun checkAndDownloadModel() {
         if (isModelReady || isModelDownloading) return
         
-        // Check if model file exists in cache (check both locations)
+        // Check if model file and vocab exist in cache
         val cacheDir = File(reactApplicationContext.filesDir, "local_intelligence_models")
         val modelFile = File(cacheDir, "${config.modelId}.tflite")
+        val vocabFile = File(cacheDir, "${config.modelId}.vocab.txt")
         
-        if (modelFile.exists()) {
-            loadModel(modelFile)
+        if (modelFile.exists() && vocabFile.exists()) {
+            loadModel(modelFile, vocabFile)
             return
         }
         
@@ -359,8 +330,11 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
         isModelReady = false
     }
     
-    private fun loadModel(modelFile: File) {
+    private fun loadModel(modelFile: File, vocabFile: File) {
         try {
+            // Load tokenizer first
+            tokenizer = WordPieceTokenizer(vocabFile)
+            
             // Try GPU delegate first
             try {
                 gpuDelegate = GpuDelegate()
@@ -376,22 +350,26 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
             isModelReady = true
             isModelDownloading = false
         } catch (e: Exception) {
+            tokenizer = null
+            interpreter = null
             isModelReady = false
             isModelDownloading = false
         }
     }
     
     private fun loadModelFile(file: File): MappedByteBuffer {
-        val fileInputStream = FileInputStream(file)
-        val fileChannel = fileInputStream.channel
-        return fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size())
+        FileInputStream(file).use { fileInputStream ->
+            val fileChannel = fileInputStream.channel
+            return fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size())
+        }
     }
     
     fun onModelDownloaded(modelId: String, path: String) {
         if (modelId == config.modelId) {
             val modelFile = File(path)
-            if (modelFile.exists()) {
-                loadModel(modelFile)
+            val vocabFile = File(modelFile.parent, "${config.modelId}.vocab.txt")
+            if (modelFile.exists() && vocabFile.exists()) {
+                loadModel(modelFile, vocabFile)
             }
         }
     }

@@ -5,6 +5,7 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.localintelligence.core.WordPieceTokenizer
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -61,6 +62,7 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
     // ONNX Runtime for BERT PII model
     private var ortEnvironment: OrtEnvironment? = null
     private var ortSession: OrtSession? = null
+    private var tokenizer: WordPieceTokenizer? = null
 
     private val regexPatterns = mapOf(
         "email_address" to PatternInfo(
@@ -428,8 +430,9 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
     private fun detectWithBERT(text: String, entities: MutableList<PIIEntity>) {
         val session = ortSession
         val env = ortEnvironment
+        val tok = tokenizer
         
-        if (session == null || env == null) {
+        if (session == null || env == null || tok == null) {
             // Fallback to heuristics if model not loaded
             detectNamesHeuristic(text, entities)
             detectAddressesHeuristic(text, entities)
@@ -437,13 +440,13 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
         }
         
         try {
-            // Tokenize text
+            // Tokenize text using proper WordPiece tokenizer
             val maxLength = 512
-            val tokens = tokenizeForBERT(text, maxLength)
+            val tokenized = tok.tokenize(text, maxLength)
             
             // Create input tensors
-            val inputIds = LongBuffer.wrap(tokens.inputIds.map { it.toLong() }.toLongArray())
-            val attentionMask = LongBuffer.wrap(tokens.attentionMask.map { it.toLong() }.toLongArray())
+            val inputIds = LongBuffer.wrap(tokenized.inputIds.map { it.toLong() }.toLongArray())
+            val attentionMask = LongBuffer.wrap(tokenized.attentionMask.map { it.toLong() }.toLongArray())
             
             val inputIdsTensor = OnnxTensor.createTensor(env, inputIds, longArrayOf(1, maxLength.toLong()))
             val attentionMaskTensor = OnnxTensor.createTensor(env, attentionMask, longArrayOf(1, maxLength.toLong()))
@@ -459,8 +462,8 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
             
             // Parse predictions
             val predictions = mutableListOf<Pair<Int, String>>()
-            for (i in tokens.inputIds.indices) {
-                if (tokens.attentionMask[i] == 0) continue
+            for (i in 0 until tokenized.tokenCount) {
+                if (tokenized.attentionMask[i] == 0) continue
                 
                 val tokenLogits = logits[0][i]
                 val maxIdx = tokenLogits.indices.maxByOrNull { tokenLogits[it] } ?: 0
@@ -472,7 +475,7 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
             }
             
             // Convert token predictions to entity spans
-            convertPredictionsToEntities(text, tokens, predictions, entities)
+            convertPredictionsToEntitiesFromTokenizer(text, tokenized, predictions, entities)
             
             // Cleanup
             inputIdsTensor.close()
@@ -486,62 +489,9 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
         }
     }
     
-    private data class TokenizedText(
-        val inputIds: IntArray,
-        val attentionMask: IntArray,
-        val tokenToCharStart: IntArray,
-        val tokenToCharEnd: IntArray
-    )
-    
-    private fun tokenizeForBERT(text: String, maxLength: Int): TokenizedText {
-        val inputIds = IntArray(maxLength)
-        val attentionMask = IntArray(maxLength)
-        val tokenToCharStart = IntArray(maxLength) { -1 }
-        val tokenToCharEnd = IntArray(maxLength) { -1 }
-        
-        // Simple whitespace tokenization with character tracking
-        val words = text.split(Regex("\\s+"))
-        var tokenIdx = 0
-        var charOffset = 0
-        
-        // [CLS] token
-        inputIds[tokenIdx] = 101
-        attentionMask[tokenIdx] = 1
-        tokenIdx++
-        
-        for (word in words) {
-            if (tokenIdx >= maxLength - 1) break
-            if (word.isBlank()) {
-                charOffset += 1
-                continue
-            }
-            
-            val wordStart = text.indexOf(word, charOffset)
-            val wordEnd = wordStart + word.length
-            
-            // Simple hash-based token ID
-            val tokenId = (Math.abs(word.hashCode()) % 30000) + 1000
-            inputIds[tokenIdx] = tokenId
-            attentionMask[tokenIdx] = 1
-            tokenToCharStart[tokenIdx] = wordStart
-            tokenToCharEnd[tokenIdx] = wordEnd
-            
-            charOffset = wordEnd
-            tokenIdx++
-        }
-        
-        // [SEP] token
-        if (tokenIdx < maxLength) {
-            inputIds[tokenIdx] = 102
-            attentionMask[tokenIdx] = 1
-        }
-        
-        return TokenizedText(inputIds, attentionMask, tokenToCharStart, tokenToCharEnd)
-    }
-    
-    private fun convertPredictionsToEntities(
+    private fun convertPredictionsToEntitiesFromTokenizer(
         text: String,
-        tokens: TokenizedText,
+        tokenized: WordPieceTokenizer.TokenizedResult,
         predictions: List<Pair<Int, String>>,
         entities: MutableList<PIIEntity>
     ) {
@@ -551,8 +501,8 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
         var currentEnd = -1
         
         for ((tokenIdx, label) in predictions) {
-            val charStart = tokens.tokenToCharStart[tokenIdx]
-            val charEnd = tokens.tokenToCharEnd[tokenIdx]
+            val charStart = tokenized.tokenToCharStart[tokenIdx]
+            val charEnd = tokenized.tokenToCharEnd[tokenIdx]
             
             if (charStart < 0) continue
             
@@ -561,7 +511,7 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
                 currentEnd = charEnd
             } else {
                 // Save previous entity if exists
-                if (currentLabel != null && currentStart >= 0) {
+                if (currentLabel != null && currentStart >= 0 && currentEnd <= text.length) {
                     entities.add(PIIEntity(
                         type = currentLabel.lowercase(),
                         text = text.substring(currentStart, currentEnd),
@@ -578,7 +528,7 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
         }
         
         // Don't forget last entity
-        if (currentLabel != null && currentStart >= 0) {
+        if (currentLabel != null && currentStart >= 0 && currentEnd <= text.length) {
             entities.add(PIIEntity(
                 type = currentLabel.lowercase(),
                 text = text.substring(currentStart, currentEnd),
@@ -666,9 +616,10 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
         // Check if model already exists in cache
         val cacheDir = File(reactApplicationContext.filesDir, "local_intelligence_models")
         val modelFile = File(cacheDir, "bert-small-pii.onnx")
+        val vocabFile = File(cacheDir, "bert-small-pii.vocab.txt")
         
-        if (modelFile.exists()) {
-            loadOnnxModel(modelFile)
+        if (modelFile.exists() && vocabFile.exists()) {
+            loadOnnxModel(modelFile, vocabFile)
             return
         }
         
@@ -677,13 +628,19 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
         isModelReady = false
     }
     
-    private fun loadOnnxModel(modelFile: File) {
+    private fun loadOnnxModel(modelFile: File, vocabFile: File) {
         try {
+            // Load tokenizer first
+            tokenizer = WordPieceTokenizer(vocabFile)
+            
+            // Then load ONNX model
             ortEnvironment = OrtEnvironment.getEnvironment()
             ortSession = ortEnvironment?.createSession(modelFile.absolutePath)
             isModelReady = true
             isModelDownloading = false
         } catch (e: Exception) {
+            tokenizer = null
+            ortSession = null
             isModelReady = false
             isModelDownloading = false
         }
@@ -692,8 +649,9 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
     fun onModelDownloaded(modelId: String, path: String) {
         if (modelId == "bert-small-pii") {
             val modelFile = File(path)
-            if (modelFile.exists()) {
-                loadOnnxModel(modelFile)
+            val vocabFile = File(modelFile.parent, "bert-small-pii.vocab.txt")
+            if (modelFile.exists() && vocabFile.exists()) {
+                loadOnnxModel(modelFile, vocabFile)
             }
         }
     }
