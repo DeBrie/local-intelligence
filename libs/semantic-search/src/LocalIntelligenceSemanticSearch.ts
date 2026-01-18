@@ -27,10 +27,13 @@ const LocalIntelligenceSemanticSearchModule = NativeModule
 let eventEmitter: NativeEventEmitter | null = null;
 let isInitialized = false;
 let currentConfig: SemanticSearchConfig = {};
+let modelDownloadSubscription: { remove: () => void } | null = null;
 
 function getEventEmitter(): NativeEventEmitter {
   if (!eventEmitter) {
-    eventEmitter = new NativeEventEmitter(LocalIntelligenceSemanticSearchModule);
+    eventEmitter = new NativeEventEmitter(
+      LocalIntelligenceSemanticSearchModule,
+    );
   }
   return eventEmitter;
 }
@@ -55,8 +58,36 @@ export async function initialize(
   if (result) {
     isInitialized = true;
     currentConfig = config;
+    subscribeToModelDownloads(nativeConfig.modelId);
   }
   return result;
+}
+
+function subscribeToModelDownloads(modelId: string): void {
+  if (modelDownloadSubscription) {
+    return;
+  }
+
+  try {
+    const CoreModule = NativeModules.LocalIntelligenceCore;
+    if (CoreModule) {
+      const coreEmitter = new NativeEventEmitter(CoreModule);
+      modelDownloadSubscription = coreEmitter.addListener(
+        'LocalIntelligenceModelDownloaded',
+        (event: { modelId: string; path: string }) => {
+          // Notify native semantic-search module when embedding model is downloaded
+          if (event.modelId === modelId) {
+            LocalIntelligenceSemanticSearchModule.notifyModelDownloaded?.(
+              event.modelId,
+              event.path,
+            );
+          }
+        },
+      );
+    }
+  } catch {
+    // Core module not available, skip subscription
+  }
 }
 
 export async function generateEmbedding(
@@ -68,7 +99,8 @@ export async function generateEmbedding(
     );
   }
 
-  const resultJson = await LocalIntelligenceSemanticSearchModule.generateEmbedding(text);
+  const resultJson =
+    await LocalIntelligenceSemanticSearchModule.generateEmbedding(text);
   return JSON.parse(resultJson) as EmbeddingResult;
 }
 
@@ -91,7 +123,8 @@ export async function getModelStatus(): Promise<{
   progress?: number;
   error?: string;
 }> {
-  const resultJson = await LocalIntelligenceSemanticSearchModule.getModelStatus();
+  const resultJson =
+    await LocalIntelligenceSemanticSearchModule.getModelStatus();
   return JSON.parse(resultJson);
 }
 
