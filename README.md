@@ -45,13 +45,13 @@ On-device AI for React Native — privacy-first, hardware-accelerated machine le
 
 ## Packages
 
-| Package                               | Description                                             | Size    | Model Size | Status     |
-| ------------------------------------- | ------------------------------------------------------- | ------- | ---------- | ---------- |
-| `@local-intelligence/core`            | Native engine, model management, hardware detection     | 9.1 kB  | -          | ✅ MVP     |
-| `@local-intelligence/pii`             | PII detection with NLTagger (iOS) / BERT-ONNX (Android) | 11.1 kB | ~38 MB     | ✅ MVP     |
-| `@local-intelligence/sentiment`       | Rule-based 3-class sentiment (lexicon, no ML model)     | 9.2 kB  | -          | ⚠️ Basic   |
-| `@local-intelligence/semantic-search` | Text embeddings with MiniLM-L6-v2 TFLite                | 10.5 kB | ~45 MB     | ✅ MVP     |
-| `@local-intelligence/chat`            | On-device LLM (Foundation Models / ExecuTorch)          | -       | -          | 🚧 Planned |
+| Package                               | Description                                                  | Size    | Model Size | Status     |
+| ------------------------------------- | ------------------------------------------------------------ | ------- | ---------- | ---------- |
+| `@local-intelligence/core`            | Native engine, model management, hardware detection          | 9.1 kB  | -          | ✅ MVP     |
+| `@local-intelligence/pii`             | PII detection with NLTagger+BERT (iOS) / BERT-ONNX (Android) | 11.1 kB | ~38 MB     | ✅ MVP     |
+| `@local-intelligence/sentiment`       | Sentiment analysis: NLTagger (iOS) / Lexicon (Android)       | 9.2 kB  | -          | ✅ MVP     |
+| `@local-intelligence/semantic-search` | Text embeddings: NLEmbedding (iOS) / MiniLM TFLite (Android) | 10.5 kB | ~45 MB     | ⚠️ Beta    |
+| `@local-intelligence/chat`            | On-device LLM (Foundation Models / ExecuTorch)               | -       | -          | 🚧 Planned |
 
 > **Zero runtime JS dependencies** — all packages rely solely on React Native's native runtime and platform ML frameworks. Models are downloaded on-demand from our CDN (`cdn.localintelligence.dev`).
 
@@ -63,6 +63,8 @@ Models are hosted on Cloudflare R2 and downloaded automatically when first neede
 | ---------------- | --------------- | ------ | ----- | ------------------------------------------------------------------------------------------------------- |
 | `bert-small-pii` | pii             | ONNX   | 38 MB | [gravitee-io/bert-small-pii-detection](https://huggingface.co/gravitee-io/bert-small-pii-detection)     |
 | `minilm-l6-v2`   | semantic-search | TFLite | 45 MB | [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) |
+
+> **⚠️ Cross-Platform Note:** iOS semantic-search uses Apple's NLEmbedding (512-dim, adjusted to 384) while Android uses MiniLM-L6-v2 TFLite. Embeddings are **not compatible across platforms** - indexes built on one platform cannot be searched from another.
 
 ## Getting Started
 
@@ -99,7 +101,7 @@ This is an Nx monorepo with the following structure:
 ```
 local-intelligence/
 ├── libs/
-│   └── core/           # @local-intelligence/core - Native JSI/TurboModule
+│   └── core/           # @local-intelligence/core - Native Bridge Module
 ├── apps/
 │   └── playground/     # Demo app showcasing all features
 ├── nx.json             # Nx configuration
