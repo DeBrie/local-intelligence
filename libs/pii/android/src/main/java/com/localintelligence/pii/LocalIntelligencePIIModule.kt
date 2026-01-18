@@ -426,28 +426,52 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
     }
 
     private fun detectNamesHeuristic(text: String, entities: MutableList<PIIEntity>) {
-        if (!config.enabledTypes.contains("person")) return
+        val detectPerson = config.enabledTypes.contains("person")
+        val detectOrg = config.enabledTypes.contains("organization")
+        
+        if (!detectPerson && !detectOrg) return
         
         // Enhanced capitalized word sequence detection
         val namePattern = Pattern.compile("""\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b""")
         val matcher = namePattern.matcher(text)
         
+        // Organization indicators
+        val orgSuffixes = listOf("Corporation", "Corp", "Company", "Co", "Inc", "LLC", "Ltd", 
+            "Limited", "Group", "Holdings", "Industries", "International", "Foundation",
+            "Association", "Institute", "University", "College", "Bank", "Partners")
+        
+        // Common non-name phrases to filter out
+        val commonPhrases = listOf("The", "This", "That", "These", "Those", "Monday", "Tuesday", 
+            "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "January", "February", 
+            "March", "April", "May", "June", "July", "August", "September", "October", 
+            "November", "December", "New York", "Los Angeles", "San Francisco")
+        
         while (matcher.find()) {
             val match = matcher.group()
-            // Filter out common non-name phrases
-            val commonPhrases = listOf("The", "This", "That", "These", "Those", "Monday", "Tuesday", 
-                "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "January", "February", 
-                "March", "April", "May", "June", "July", "August", "September", "October", 
-                "November", "December", "New York", "Los Angeles", "San Francisco")
-            
             val words = match.split(" ")
-            if (words.none { commonPhrases.contains(it) }) {
+            
+            if (words.any { commonPhrases.contains(it) }) continue
+            
+            // Check if it looks like an organization
+            val isOrganization = words.any { word -> orgSuffixes.any { suffix -> 
+                word.equals(suffix, ignoreCase = true) 
+            }}
+            
+            if (isOrganization && detectOrg) {
+                entities.add(PIIEntity(
+                    type = "organization",
+                    text = match,
+                    startIndex = matcher.start(),
+                    endIndex = matcher.end(),
+                    confidence = if (isModelReady) 0.85 else 0.60
+                ))
+            } else if (!isOrganization && detectPerson) {
                 entities.add(PIIEntity(
                     type = "person",
                     text = match,
                     startIndex = matcher.start(),
                     endIndex = matcher.end(),
-                    confidence = if (isModelReady) 0.85 else 0.65 // Lower confidence for heuristic
+                    confidence = if (isModelReady) 0.85 else 0.65
                 ))
             }
         }

@@ -17,6 +17,7 @@ class LocalIntelligencePII: RCTEventEmitter {
         "credit_card": ("\\b(?:[0-9]{4}[-\\s]?){3}[0-9]{4}\\b", "credit_card"),
         "ip_address": ("\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b", "ip_address"),
         "url": ("https?://[^\\s]+", "url"),
+        "address": ("\\b\\d+\\s+[A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*\\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct)\\b", "address"),
     ]
     
     struct PIIConfig {

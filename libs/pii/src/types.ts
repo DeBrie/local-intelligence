@@ -27,6 +27,10 @@ export type PIIEntityType =
   | 'us_license_plate'
   | 'us_passport'
   | 'us_ssn'
+  | 'ssn'
+  | 'address'
+  | 'email'
+  | 'phone'
   | 'custom';
 
 export interface PIIEntity {
