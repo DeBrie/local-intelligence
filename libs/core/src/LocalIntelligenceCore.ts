@@ -1,5 +1,4 @@
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
-import NativeLocalIntelligenceCore from './NativeLocalIntelligenceCore';
 import type {
   CoreConfig,
   DeviceCapabilities,
@@ -15,17 +14,18 @@ const LINKING_ERROR =
   '- You rebuilt the app after installing the package\n' +
   '- You are not using Expo Go\n';
 
-const LocalIntelligenceCoreTurboModule: typeof NativeLocalIntelligenceCore =
-  NativeLocalIntelligenceCore
-    ? NativeLocalIntelligenceCore
-    : (new Proxy(
-        {},
-        {
-          get() {
-            throw new Error(LINKING_ERROR);
-          },
+const NativeModule = NativeModules.LocalIntelligenceCore;
+
+const LocalIntelligenceCoreModule = NativeModule
+  ? NativeModule
+  : new Proxy(
+      {},
+      {
+        get() {
+          throw new Error(LINKING_ERROR);
         },
-      ) as typeof NativeLocalIntelligenceCore);
+      },
+    );
 
 const DEFAULT_CDN_BASE_URL = 'https://cdn.local-intelligence.dev/models';
 
@@ -54,8 +54,7 @@ export async function initialize(config?: CoreConfig): Promise<void> {
 
   try {
     const configJson = JSON.stringify(mergedConfig);
-    const success =
-      await LocalIntelligenceCoreTurboModule.initialize(configJson);
+    const success = await LocalIntelligenceCoreModule.initialize(configJson);
 
     if (!success) {
       throw new InitializationError(
@@ -75,16 +74,14 @@ export async function initialize(config?: CoreConfig): Promise<void> {
 export async function getDeviceCapabilities(): Promise<DeviceCapabilities> {
   ensureInitialized();
 
-  const resultJson =
-    await LocalIntelligenceCoreTurboModule.getDeviceCapabilities();
+  const resultJson = await LocalIntelligenceCoreModule.getDeviceCapabilities();
   return JSON.parse(resultJson) as DeviceCapabilities;
 }
 
 export async function getModelStatus(modelId: string): Promise<ModelStatus> {
   ensureInitialized();
 
-  const resultJson =
-    await LocalIntelligenceCoreTurboModule.getModelStatus(modelId);
+  const resultJson = await LocalIntelligenceCoreModule.getModelStatus(modelId);
   return JSON.parse(resultJson) as ModelStatus;
 }
 
@@ -109,8 +106,7 @@ export async function downloadModel(
   }
 
   try {
-    const resultJson =
-      await LocalIntelligenceCoreTurboModule.downloadModel(modelId);
+    const resultJson = await LocalIntelligenceCoreModule.downloadModel(modelId);
     const result = JSON.parse(resultJson);
 
     if (result.error) {
@@ -125,22 +121,22 @@ export async function downloadModel(
 
 export async function cancelDownload(modelId: string): Promise<boolean> {
   ensureInitialized();
-  return LocalIntelligenceCoreTurboModule.cancelDownload(modelId);
+  return LocalIntelligenceCoreModule.cancelDownload(modelId);
 }
 
 export async function deleteModel(modelId: string): Promise<boolean> {
   ensureInitialized();
-  return LocalIntelligenceCoreTurboModule.deleteModel(modelId);
+  return LocalIntelligenceCoreModule.deleteModel(modelId);
 }
 
 export async function clearModelCache(): Promise<void> {
   ensureInitialized();
-  await LocalIntelligenceCoreTurboModule.clearModelCache();
+  await LocalIntelligenceCoreModule.clearModelCache();
 }
 
 export async function getCacheSize(): Promise<number> {
   ensureInitialized();
-  return LocalIntelligenceCoreTurboModule.getCacheSize();
+  return LocalIntelligenceCoreModule.getCacheSize();
 }
 
 export function isReady(): boolean {
