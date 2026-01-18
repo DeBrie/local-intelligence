@@ -206,3 +206,16 @@ export function isReady(): boolean {
 export function getConfig(): PIIConfig {
   return { ...currentConfig };
 }
+
+/**
+ * Cleanup function to remove event listeners and reset state.
+ * Call this when unmounting or when the module is no longer needed.
+ */
+export function cleanup(): void {
+  if (modelDownloadSubscription) {
+    modelDownloadSubscription.remove();
+    modelDownloadSubscription = null;
+  }
+  isInitialized = false;
+  currentConfig = {};
+}
