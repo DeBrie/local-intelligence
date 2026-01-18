@@ -1,18 +1,32 @@
 package com.localintelligence.sentiment
 
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.localintelligence.core.WordPieceTokenizer
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileInputStream
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
+import kotlin.math.exp
 
 class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext) {
+    ReactContextBaseJavaModule(reactContext), ComponentCallbacks2 {
 
     companion object {
         const val NAME = "LocalIntelligenceSentiment"
+        const val MODEL_ID = "distilbert-sst2"
+        const val MEMORY_PRESSURE_IDLE_THRESHOLD_MS = 30_000L
+        
+        // DistilBERT-SST2 labels: 0 = negative, 1 = positive
+        val SENTIMENT_LABELS = listOf("negative", "positive")
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -20,6 +34,53 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
     private var config = SentimentConfig()
     private var stats = SentimentStats()
     private val cache = ConcurrentHashMap<String, CachedResult>()
+    
+    // ONNX Runtime for DistilBERT-SST2 model
+    @Volatile private var ortEnvironment: OrtEnvironment? = null
+    @Volatile private var ortSession: OrtSession? = null
+    @Volatile private var tokenizer: WordPieceTokenizer? = null
+    @Volatile private var isModelReady = false
+    private val modelLock = Any()
+    @Volatile private var lastAccessTimeMs: Long = System.currentTimeMillis()
+
+    init {
+        reactApplicationContext.registerComponentCallbacks(this)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {}
+
+    override fun onLowMemory() {
+        handleMemoryPressure(ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        handleMemoryPressure(level)
+    }
+
+    private fun handleMemoryPressure(level: Int) {
+        val timeSinceLastAccess = System.currentTimeMillis() - lastAccessTimeMs
+        
+        when {
+            level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+                unloadModelInternal()
+            }
+            level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE && timeSinceLastAccess > MEMORY_PRESSURE_IDLE_THRESHOLD_MS -> {
+                unloadModelInternal()
+            }
+            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND && timeSinceLastAccess > MEMORY_PRESSURE_IDLE_THRESHOLD_MS * 2 -> {
+                unloadModelInternal()
+            }
+        }
+    }
+
+    private fun unloadModelInternal() {
+        synchronized(modelLock) {
+            ortSession?.close()
+            ortSession = null
+            tokenizer = null
+            isModelReady = false
+        }
+    }
 
     private val positiveWords = setOf(
         "good", "great", "excellent", "amazing", "wonderful", "fantastic", "awesome",
@@ -252,6 +313,98 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
     }
 
     private fun analyzeSentiment(text: String, startTime: Long): SentimentResult {
+        lastAccessTimeMs = System.currentTimeMillis()
+        
+        // Use ONNX model if available
+        if (isModelReady) {
+            return analyzeWithONNX(text, startTime)
+        }
+        
+        // Fallback to rule-based analysis
+        return analyzeWithRules(text, startTime)
+    }
+    
+    private fun analyzeWithONNX(text: String, startTime: Long): SentimentResult {
+        val session: OrtSession
+        val env: OrtEnvironment
+        val tok: WordPieceTokenizer
+        
+        synchronized(modelLock) {
+            session = ortSession ?: return analyzeWithRules(text, startTime)
+            env = ortEnvironment ?: return analyzeWithRules(text, startTime)
+            tok = tokenizer ?: return analyzeWithRules(text, startTime)
+        }
+        
+        try {
+            val maxLength = 512
+            val tokenized = tok.tokenize(text, maxLength, true)
+            
+            // Create input tensors
+            val inputIdsArray = Array(1) { LongArray(maxLength) { tokenized.inputIds[it].toLong() } }
+            val attentionMaskArray = Array(1) { LongArray(maxLength) { tokenized.attentionMask[it].toLong() } }
+            
+            val inputIdsTensor = OnnxTensor.createTensor(env, inputIdsArray)
+            val attentionMaskTensor = OnnxTensor.createTensor(env, attentionMaskArray)
+            
+            val inputs = mapOf(
+                "input_ids" to inputIdsTensor,
+                "attention_mask" to attentionMaskTensor
+            )
+            
+            val outputs = session.run(inputs)
+            val logits = (outputs[0].value as Array<FloatArray>)[0]
+            
+            // Apply softmax to get probabilities
+            val probs = softmax(logits)
+            val negativeProb = probs[0].toDouble()
+            val positiveProb = probs[1].toDouble()
+            
+            // Determine label and confidence
+            val label: String
+            val confidence: Double
+            
+            if (positiveProb > negativeProb) {
+                label = "positive"
+                confidence = positiveProb
+            } else {
+                label = "negative"
+                confidence = negativeProb
+            }
+            
+            // Calculate neutral as inverse of max confidence (SST-2 is binary)
+            val neutralScore = 1.0 - confidence
+            
+            val processingTime = (System.currentTimeMillis() - startTime).toDouble()
+            
+            inputIdsTensor.close()
+            attentionMaskTensor.close()
+            outputs.close()
+            
+            return SentimentResult(
+                text = text,
+                label = label,
+                confidence = confidence,
+                scores = SentimentResult.Scores(
+                    positive = positiveProb,
+                    negative = negativeProb,
+                    neutral = neutralScore
+                ),
+                processingTimeMs = processingTime
+            )
+        } catch (e: Exception) {
+            // Fallback to rules on error
+            return analyzeWithRules(text, startTime)
+        }
+    }
+    
+    private fun softmax(logits: FloatArray): FloatArray {
+        val maxLogit = logits.maxOrNull() ?: 0f
+        val expValues = logits.map { exp((it - maxLogit).toDouble()).toFloat() }.toFloatArray()
+        val sumExp = expValues.sum()
+        return expValues.map { it / sumExp }.toFloatArray()
+    }
+    
+    private fun analyzeWithRules(text: String, startTime: Long): SentimentResult {
         val words = text.lowercase().split(Regex("[\\s,.!?;:\"'()\\[\\]{}]+"))
             .filter { it.isNotBlank() }
         
@@ -361,6 +514,55 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
                 put("neutral", result.scores.neutral)
             })
             put("processingTimeMs", result.processingTimeMs)
+        }
+    }
+
+    @ReactMethod
+    fun notifyModelDownloaded(modelId: String, path: String) {
+        if (modelId == MODEL_ID) {
+            scope.launch {
+                loadOnnxModel(path)
+            }
+        }
+    }
+    
+    @ReactMethod
+    fun getModelStatus(promise: Promise) {
+        val status = if (isModelReady) "ready" else "not_ready"
+        val result = JSONObject().apply {
+            put("status", status)
+            put("modelId", MODEL_ID)
+            put("isModelReady", isModelReady)
+        }
+        promise.resolve(result.toString())
+    }
+    
+    private fun loadOnnxModel(modelPath: String) {
+        synchronized(modelLock) {
+            try {
+                val modelFile = File(modelPath)
+                if (!modelFile.exists()) return
+                
+                // Load vocab file
+                val vocabFile = File(modelFile.parent, "$MODEL_ID.vocab.txt")
+                if (!vocabFile.exists()) return
+                
+                // Initialize tokenizer
+                FileInputStream(vocabFile).use { fis ->
+                    tokenizer = WordPieceTokenizer(fis)
+                }
+                
+                // Initialize ONNX Runtime
+                ortEnvironment = OrtEnvironment.getEnvironment()
+                ortSession = ortEnvironment?.createSession(modelPath)
+                
+                isModelReady = true
+            } catch (e: Exception) {
+                ortSession = null
+                ortEnvironment = null
+                tokenizer = null
+                isModelReady = false
+            }
         }
     }
 
