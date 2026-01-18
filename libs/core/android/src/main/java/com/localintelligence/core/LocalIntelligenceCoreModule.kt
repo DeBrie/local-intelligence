@@ -24,7 +24,7 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
     }
 
     private var config: CoreConfig? = null
-    private val modelCache = mutableMapOf<String, ModelStatus>()
+    private val modelCache = java.util.concurrent.ConcurrentHashMap<String, ModelStatus>()
     private val activeDownloads = mutableMapOf<String, Job>()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var listenerCount = 0
@@ -226,7 +226,7 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
             } catch (e: Exception) {
                 activeDownloads.remove(modelId)
                 withContext(Dispatchers.Main) {
-                    promise.resolve(JSONObject().put("error", e.message).toString())
+                    promise.reject("DOWNLOAD_ERROR", e.message ?: "Unknown download error", e)
                 }
             }
         }
@@ -425,7 +425,14 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
     }
 
     private fun checkGPUAvailability(): Boolean {
-        return true
+        // Check for OpenGL ES 3.1+ which is required for GPU delegate
+        val activityManager = reactApplicationContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val configInfo = activityManager?.deviceConfigurationInfo
+        
+        // OpenGL ES 3.1 is version 0x00030001 (196609)
+        // GPU delegate requires OpenGL ES 3.1 or higher
+        val glVersion = configInfo?.reqGlEsVersion ?: 0
+        return glVersion >= 0x00030001
     }
 
     private fun getDeviceRAM(): Double {
