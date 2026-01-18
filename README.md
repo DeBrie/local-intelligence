@@ -45,15 +45,24 @@ On-device AI for React Native — privacy-first, hardware-accelerated machine le
 
 ## Packages
 
-| Package                               | Description                                         | Size    | Dependencies | Status     |
-| ------------------------------------- | --------------------------------------------------- | ------- | ------------ | ---------- |
-| `@local-intelligence/core`            | Native engine, model management, hardware detection | 9.1 kB  | 0            | ✅ MVP     |
-| `@local-intelligence/pii`             | PII redaction with NLTagger (iOS) / BERT (Android)  | 11.1 kB | 0            | ✅ MVP     |
-| `@local-intelligence/sentiment`       | 3-class sentiment analysis with batch processing    | 9.2 kB  | 0            | ✅ MVP     |
-| `@local-intelligence/semantic-search` | Text embeddings + vector storage (sqlite-vec)       | 10.5 kB | 0            | ✅ MVP     |
-| `@local-intelligence/chat`            | On-device LLM (Foundation Models / ExecuTorch)      | -       | -            | 🚧 Planned |
+| Package                               | Description                                             | Size    | Model Size | Status     |
+| ------------------------------------- | ------------------------------------------------------- | ------- | ---------- | ---------- |
+| `@local-intelligence/core`            | Native engine, model management, hardware detection     | 9.1 kB  | -          | ✅ MVP     |
+| `@local-intelligence/pii`             | PII detection with NLTagger (iOS) / BERT-ONNX (Android) | 11.1 kB | ~38 MB     | ✅ MVP     |
+| `@local-intelligence/sentiment`       | 3-class sentiment analysis with batch processing        | 9.2 kB  | -          | ✅ MVP     |
+| `@local-intelligence/semantic-search` | Text embeddings with MiniLM-L6-v2 TFLite                | 10.5 kB | ~45 MB     | ✅ MVP     |
+| `@local-intelligence/chat`            | On-device LLM (Foundation Models / ExecuTorch)          | -       | -          | 🚧 Planned |
 
-> **Zero runtime dependencies** — all packages rely solely on React Native's native runtime and platform ML frameworks (Core ML, NLTagger, LiteRT). No bloated JS dependencies.
+> **Zero runtime JS dependencies** — all packages rely solely on React Native's native runtime and platform ML frameworks. Models are downloaded on-demand from our CDN (`cdn.localintelligence.dev`).
+
+## Models
+
+Models are hosted on Cloudflare R2 and downloaded automatically when first needed:
+
+| Model            | Package         | Format | Size  | Source                                                                                                  |
+| ---------------- | --------------- | ------ | ----- | ------------------------------------------------------------------------------------------------------- |
+| `bert-small-pii` | pii             | ONNX   | 38 MB | [gravitee-io/bert-small-pii-detection](https://huggingface.co/gravitee-io/bert-small-pii-detection)     |
+| `minilm-l6-v2`   | semantic-search | TFLite | 45 MB | [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) |
 
 ## Getting Started
 

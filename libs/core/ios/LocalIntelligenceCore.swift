@@ -103,8 +103,8 @@ class LocalIntelligenceCore: RCTEventEmitter {
             return
         }
         
-        let cdnBaseUrl = config.cdnBaseUrl ?? "https://cdn.local-intelligence.dev/models"
-        let urlString = "\(cdnBaseUrl)/\(modelId)/latest/ios.mlmodel"
+        let cdnBaseUrl = config.cdnBaseUrl ?? "https://cdn.localintelligence.dev/models"
+        let urlString = "\(cdnBaseUrl)/\(modelId)/latest/ios.mlmodelc.zip"
         
         guard let url = URL(string: urlString) else {
             reject("INVALID_URL", "Invalid download URL", nil)

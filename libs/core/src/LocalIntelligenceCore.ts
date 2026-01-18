@@ -27,7 +27,7 @@ const LocalIntelligenceCoreModule = NativeModule
       },
     );
 
-const DEFAULT_CDN_BASE_URL = 'https://cdn.local-intelligence.dev/models';
+const DEFAULT_CDN_BASE_URL = 'https://cdn.localintelligence.dev/models';
 
 let isInitialized = false;
 let currentConfig: CoreConfig = {};

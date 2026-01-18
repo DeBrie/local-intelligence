@@ -34,7 +34,7 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
             val json = JSONObject(configJson)
             config = CoreConfig(
                 modelCacheDir = json.optString("modelCacheDir", null),
-                cdnBaseUrl = json.optString("cdnBaseUrl", "https://cdn.local-intelligence.dev/models"),
+                cdnBaseUrl = json.optString("cdnBaseUrl", "https://cdn.localintelligence.dev/models"),
                 maxConcurrentDownloads = json.optInt("maxConcurrentDownloads", 2),
                 enableLogging = json.optBoolean("enableLogging", false)
             )
@@ -99,14 +99,37 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
 
         val job = scope.launch {
             try {
-                val urlString = "${cfg.cdnBaseUrl}/$modelId/latest/android.tflite"
+                // First fetch metadata to determine model format
+                val metadataUrl = URL("${cfg.cdnBaseUrl}/$modelId/latest/metadata.json")
+                val metadataConnection = metadataUrl.openConnection() as HttpURLConnection
+                metadataConnection.requestMethod = "GET"
+                metadataConnection.connect()
+                
+                val metadataJson = metadataConnection.inputStream.bufferedReader().use { it.readText() }
+                val metadata = JSONObject(metadataJson)
+                metadataConnection.disconnect()
+                
+                // Determine file name based on format in metadata
+                val format = metadata.optString("format", "tflite")
+                val fileName = when (format) {
+                    "onnx" -> "model.onnx"
+                    "tflite" -> "android.tflite"
+                    else -> "android.tflite"
+                }
+                val fileExtension = when (format) {
+                    "onnx" -> ".onnx"
+                    else -> ".tflite"
+                }
+                
+                val urlString = "${cfg.cdnBaseUrl}/$modelId/latest/$fileName"
                 val url = URL(urlString)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.connect()
 
                 val totalBytes = connection.contentLength.toLong()
-                val destPath = getModelPath(modelId) ?: throw Exception("Failed to get destination path")
+                val cacheDir = getCacheDirectory() ?: throw Exception("Failed to get cache directory")
+                val destPath = File(cacheDir, "$modelId$fileExtension").absolutePath
                 val destFile = File(destPath)
                 destFile.parentFile?.mkdirs()
 
@@ -127,13 +150,17 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
                         }
                     }
                 }
+                
+                // Also save metadata locally
+                val metadataPath = File(cacheDir, "$modelId.metadata.json")
+                metadataPath.writeText(metadataJson)
 
                 val status = ModelStatus("ready", null, destFile.length(), destPath, null)
                 modelCache[modelId] = status
                 activeDownloads.remove(modelId)
 
                 withContext(Dispatchers.Main) {
-                    promise.resolve(JSONObject().put("path", destPath).toString())
+                    promise.resolve(JSONObject().put("path", destPath).put("format", format).toString())
                 }
             } catch (e: Exception) {
                 activeDownloads.remove(modelId)
@@ -243,7 +270,13 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
 
     private fun getModelPath(modelId: String): String? {
         val cacheDir = getCacheDirectory() ?: return null
-        return File(cacheDir, "$modelId.tflite").absolutePath
+        // Check for both formats
+        val onnxFile = File(cacheDir, "$modelId.onnx")
+        if (onnxFile.exists()) return onnxFile.absolutePath
+        val tfliteFile = File(cacheDir, "$modelId.tflite")
+        if (tfliteFile.exists()) return tfliteFile.absolutePath
+        // Default to tflite for new downloads
+        return tfliteFile.absolutePath
     }
 
     private fun checkNNAPIAvailability(): Boolean {

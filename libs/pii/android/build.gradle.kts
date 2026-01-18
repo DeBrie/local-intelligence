@@ -24,4 +24,5 @@ android {
 dependencies {
     implementation("com.facebook.react:react-android")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.3")
 }

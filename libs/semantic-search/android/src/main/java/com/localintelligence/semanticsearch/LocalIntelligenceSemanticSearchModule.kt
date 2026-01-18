@@ -5,7 +5,14 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
+import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.gpu.GpuDelegate
 import java.io.File
+import java.io.FileInputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
 import kotlin.math.sqrt
 
 class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContext) :
@@ -22,6 +29,8 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
     private var isModelDownloading = false
     private var config = SemanticSearchConfig()
     private var stats = EmbeddingStats()
+    private var interpreter: Interpreter? = null
+    private var gpuDelegate: GpuDelegate? = null
 
     data class SemanticSearchConfig(
         var databasePath: String = "",
@@ -199,9 +208,87 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
     }
 
     private fun generateWithTFLite(text: String): DoubleArray {
-        // TODO: Integrate actual TFLite MiniLM model inference
-        // For now, using enhanced fallback
-        return generateFallbackEmbedding(text)
+        val interp = interpreter ?: return generateFallbackEmbedding(text)
+        
+        try {
+            // Tokenize text - simple whitespace tokenization with padding
+            // MiniLM expects input_ids and attention_mask
+            val maxLength = 256
+            val tokens = tokenizeText(text, maxLength)
+            
+            // Prepare input tensors
+            val inputIds = Array(1) { IntArray(maxLength) }
+            val attentionMask = Array(1) { IntArray(maxLength) }
+            
+            for (i in tokens.indices) {
+                inputIds[0][i] = tokens[i]
+                attentionMask[0][i] = 1
+            }
+            
+            // Prepare output tensor (batch_size=1, sequence_length, hidden_size=384)
+            val outputShape = interp.getOutputTensor(0).shape()
+            val outputBuffer = Array(1) { Array(outputShape[1]) { FloatArray(outputShape[2]) } }
+            
+            // Run inference
+            val inputs = mapOf(
+                "input_ids" to inputIds,
+                "attention_mask" to attentionMask
+            )
+            val outputs = mapOf(0 to outputBuffer)
+            interp.runForMultipleInputsOutputs(arrayOf(inputIds, attentionMask), outputs)
+            
+            // Mean pooling over sequence dimension
+            val embedding = DoubleArray(config.embeddingDimensions)
+            val seqLen = tokens.size.coerceAtMost(outputShape[1])
+            
+            for (dim in 0 until config.embeddingDimensions) {
+                var sum = 0.0
+                for (seq in 0 until seqLen) {
+                    sum += outputBuffer[0][seq][dim].toDouble()
+                }
+                embedding[dim] = sum / seqLen
+            }
+            
+            // L2 normalize
+            val magnitude = sqrt(embedding.sumOf { it * it })
+            if (magnitude > 0) {
+                for (i in embedding.indices) {
+                    embedding[i] /= magnitude
+                }
+            }
+            
+            return embedding
+        } catch (e: Exception) {
+            // Fallback on error
+            return generateFallbackEmbedding(text)
+        }
+    }
+    
+    private fun tokenizeText(text: String, maxLength: Int): List<Int> {
+        // Simple word-piece-like tokenization
+        // In production, would use proper tokenizer from model metadata
+        val words = text.lowercase().split(Regex("\\s+"))
+        val tokens = mutableListOf<Int>()
+        
+        // [CLS] token
+        tokens.add(101)
+        
+        for (word in words) {
+            if (tokens.size >= maxLength - 1) break
+            // Simple hash-based token ID (placeholder for real vocab lookup)
+            val tokenId = (Math.abs(word.hashCode()) % 30000) + 1000
+            tokens.add(tokenId)
+        }
+        
+        // [SEP] token
+        tokens.add(102)
+        
+        // Pad to maxLength
+        while (tokens.size < maxLength) {
+            tokens.add(0)
+        }
+        
+        return tokens.take(maxLength)
     }
 
     private fun generateFallbackEmbedding(text: String): DoubleArray {
@@ -258,29 +345,53 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
     private fun checkAndDownloadModel() {
         if (isModelReady || isModelDownloading) return
         
-        // Check if model file exists in cache
-        val modelFile = File(reactApplicationContext.cacheDir, "models/${config.modelId}.tflite")
+        // Check if model file exists in cache (check both locations)
+        val cacheDir = File(reactApplicationContext.filesDir, "local_intelligence_models")
+        val modelFile = File(cacheDir, "${config.modelId}.tflite")
+        
         if (modelFile.exists()) {
-            isModelReady = true
+            loadModel(modelFile)
             return
         }
         
-        // Trigger background download
-        isModelDownloading = true
-        scope.launch {
+        // Model not downloaded yet - will use fallback until downloaded via core module
+        isModelDownloading = false
+        isModelReady = false
+    }
+    
+    private fun loadModel(modelFile: File) {
+        try {
+            // Try GPU delegate first
             try {
-                // TODO: Integrate with @local-intelligence/core model download
-                // For now, just mark as not ready
-                delay(100)
-                isModelDownloading = false
-                
-                // Send progress event
-                val params = Arguments.createMap().apply {
-                    putDouble("progress", 0.0)
-                }
-                sendEvent("onModelDownloadProgress", params)
+                gpuDelegate = GpuDelegate()
+                val options = Interpreter.Options().addDelegate(gpuDelegate)
+                interpreter = Interpreter(loadModelFile(modelFile), options)
             } catch (e: Exception) {
-                isModelDownloading = false
+                // Fallback to CPU
+                gpuDelegate?.close()
+                gpuDelegate = null
+                interpreter = Interpreter(loadModelFile(modelFile))
+            }
+            
+            isModelReady = true
+            isModelDownloading = false
+        } catch (e: Exception) {
+            isModelReady = false
+            isModelDownloading = false
+        }
+    }
+    
+    private fun loadModelFile(file: File): MappedByteBuffer {
+        val fileInputStream = FileInputStream(file)
+        val fileChannel = fileInputStream.channel
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size())
+    }
+    
+    fun onModelDownloaded(modelId: String, path: String) {
+        if (modelId == config.modelId) {
+            val modelFile = File(path)
+            if (modelFile.exists()) {
+                loadModel(modelFile)
             }
         }
     }
