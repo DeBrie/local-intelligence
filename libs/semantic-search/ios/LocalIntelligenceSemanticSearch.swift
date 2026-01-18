@@ -2,6 +2,7 @@ import Foundation
 import NaturalLanguage
 import CoreML
 import React
+import UIKit
 
 @objc(LocalIntelligenceSemanticSearch)
 class LocalIntelligenceSemanticSearch: NSObject {
@@ -10,6 +11,8 @@ class LocalIntelligenceSemanticSearch: NSObject {
     private var config = SemanticSearchConfig()
     private var embeddingModel: NLEmbedding?
     private var stats = EmbeddingStats()
+    private var memoryWarningObserver: NSObjectProtocol?
+    private var lastAccessTime: Date = Date()
     
     struct SemanticSearchConfig {
         var databasePath: String = ""
@@ -28,6 +31,31 @@ class LocalIntelligenceSemanticSearch: NSObject {
     
     override init() {
         super.init()
+        setupMemoryWarningObserver()
+    }
+    
+    deinit {
+        if let observer = memoryWarningObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+    
+    private func setupMemoryWarningObserver() {
+        memoryWarningObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleMemoryWarning()
+        }
+    }
+    
+    private func handleMemoryWarning() {
+        // Unload model if it hasn't been used recently (> 30 seconds)
+        let timeSinceLastAccess = Date().timeIntervalSince(lastAccessTime)
+        if timeSinceLastAccess > 30 {
+            embeddingModel = nil
+        }
     }
     
     @objc static func requiresMainQueueSetup() -> Bool {
@@ -191,6 +219,9 @@ class LocalIntelligenceSemanticSearch: NSObject {
     // MARK: - Private Methods
     
     private func generateEmbeddingInternal(text: String) throws -> [Double] {
+        // Track last access time for memory pressure handling
+        lastAccessTime = Date()
+        
         // Use NLEmbedding for sentence-level embeddings on iOS 13+
         if #available(iOS 13.0, *), let embedding = embeddingModel {
             if let vector = embedding.vector(for: text) {

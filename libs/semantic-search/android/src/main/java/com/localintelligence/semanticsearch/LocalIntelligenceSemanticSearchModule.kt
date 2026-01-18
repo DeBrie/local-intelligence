@@ -1,5 +1,7 @@
 package com.localintelligence.semanticsearch
 
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.localintelligence.core.WordPieceTokenizer
@@ -17,11 +19,12 @@ import java.nio.channels.FileChannel
 import kotlin.math.sqrt
 
 class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext) {
+    ReactContextBaseJavaModule(reactContext), ComponentCallbacks2 {
 
     companion object {
         const val NAME = "LocalIntelligenceSemanticSearch"
         const val DEFAULT_EMBEDDING_DIMENSIONS = 384
+        const val MEMORY_PRESSURE_IDLE_THRESHOLD_MS = 30_000L
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -34,6 +37,51 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
     private var gpuDelegate: GpuDelegate? = null
     @Volatile private var tokenizer: WordPieceTokenizer? = null
     private val modelLock = Any()
+    @Volatile private var lastAccessTimeMs: Long = System.currentTimeMillis()
+
+    init {
+        reactContext.registerComponentCallbacks(this)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {}
+
+    override fun onLowMemory() {
+        handleMemoryPressure(ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        handleMemoryPressure(level)
+    }
+
+    private fun handleMemoryPressure(level: Int) {
+        val timeSinceLastAccess = System.currentTimeMillis() - lastAccessTimeMs
+        
+        when {
+            level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+                // Critical memory pressure - unload immediately
+                unloadModelInternal()
+            }
+            level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE && timeSinceLastAccess > MEMORY_PRESSURE_IDLE_THRESHOLD_MS -> {
+                // Moderate pressure and model idle - unload
+                unloadModelInternal()
+            }
+            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND && timeSinceLastAccess > MEMORY_PRESSURE_IDLE_THRESHOLD_MS * 2 -> {
+                // Background and model very idle - unload
+                unloadModelInternal()
+            }
+        }
+    }
+
+    private fun unloadModelInternal() {
+        synchronized(modelLock) {
+            interpreter?.close()
+            interpreter = null
+            gpuDelegate?.close()
+            gpuDelegate = null
+            tokenizer = null
+            isModelReady = false
+        }
+    }
 
     data class SemanticSearchConfig(
         var databasePath: String = "",
@@ -208,13 +256,16 @@ class LocalIntelligenceSemanticSearchModule(reactContext: ReactApplicationContex
 
     @ReactMethod
     fun unloadModel(promise: Promise) {
-        isModelReady = false
+        unloadModelInternal()
         promise.resolve(true)
     }
 
     // MARK: - Private Methods
 
     private fun generateEmbeddingInternal(text: String): DoubleArray {
+        // Track last access time for memory pressure handling
+        lastAccessTimeMs = System.currentTimeMillis()
+        
         // Check if TFLite model is available
         if (isModelReady) {
             return generateWithTFLite(text)

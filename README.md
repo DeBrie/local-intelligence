@@ -45,13 +45,13 @@ On-device AI for React Native — privacy-first, hardware-accelerated machine le
 
 ## Packages
 
-| Package                               | Description                                                  | Size    | Model Size | Status     |
-| ------------------------------------- | ------------------------------------------------------------ | ------- | ---------- | ---------- |
-| `@local-intelligence/core`            | Native engine, model management, hardware detection          | 9.1 kB  | -          | ✅ MVP     |
-| `@local-intelligence/pii`             | PII detection with NLTagger+BERT (iOS) / BERT-ONNX (Android) | 11.1 kB | ~38 MB     | ✅ MVP     |
-| `@local-intelligence/sentiment`       | Sentiment analysis: NLTagger (iOS) / Lexicon (Android)       | 9.2 kB  | -          | ✅ MVP     |
-| `@local-intelligence/semantic-search` | Text embeddings: NLEmbedding (iOS) / MiniLM TFLite (Android) | 10.5 kB | ~45 MB     | ⚠️ Beta    |
-| `@local-intelligence/chat`            | On-device LLM (Foundation Models / ExecuTorch)               | -       | -          | 🚧 Planned |
+| Package                               | Description                                                    | Size    | Model Size | Status     |
+| ------------------------------------- | -------------------------------------------------------------- | ------- | ---------- | ---------- |
+| `@local-intelligence/core`            | Native engine, model management, hardware detection            | 9.1 kB  | -          | ✅ MVP     |
+| `@local-intelligence/pii`             | PII detection with NLTagger+BERT (iOS) / BERT-ONNX (Android)   | 11.1 kB | ~38 MB     | ✅ MVP     |
+| `@local-intelligence/sentiment`       | Sentiment analysis: NLTagger (iOS) / DistilBERT-SST2 (Android) | 9.2 kB  | ~67 MB     | ✅ MVP     |
+| `@local-intelligence/semantic-search` | Text embeddings: NLEmbedding (iOS) / MiniLM TFLite (Android)   | 10.5 kB | ~45 MB     | ✅ MVP     |
+| `@local-intelligence/chat`            | On-device LLM (Foundation Models / ExecuTorch)                 | -       | -          | 🚧 Planned |
 
 > **Zero runtime JS dependencies** — all packages rely solely on React Native's native runtime and platform ML frameworks. Models are downloaded on-demand from our CDN (`cdn.localintelligence.dev`).
 
@@ -59,12 +59,59 @@ On-device AI for React Native — privacy-first, hardware-accelerated machine le
 
 Models are hosted on Cloudflare R2 and downloaded automatically when first needed:
 
-| Model            | Package         | Format | Size  | Source                                                                                                  |
-| ---------------- | --------------- | ------ | ----- | ------------------------------------------------------------------------------------------------------- |
-| `bert-small-pii` | pii             | ONNX   | 38 MB | [gravitee-io/bert-small-pii-detection](https://huggingface.co/gravitee-io/bert-small-pii-detection)     |
-| `minilm-l6-v2`   | semantic-search | TFLite | 45 MB | [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) |
+| Model             | Package         | Format | Size  | Source                                                                                                                    |
+| ----------------- | --------------- | ------ | ----- | ------------------------------------------------------------------------------------------------------------------------- |
+| `bert-small-pii`  | pii             | ONNX   | 38 MB | [gravitee-io/bert-small-pii-detection](https://huggingface.co/gravitee-io/bert-small-pii-detection)                       |
+| `minilm-l6-v2`    | semantic-search | TFLite | 45 MB | [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)                   |
+| `distilbert-sst2` | sentiment       | ONNX   | 67 MB | [distilbert-base-uncased-finetuned-sst-2-english](https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english) |
 
-> **⚠️ Cross-Platform Note:** iOS semantic-search uses Apple's NLEmbedding (512-dim, adjusted to 384) while Android uses MiniLM-L6-v2 TFLite. Embeddings are **not compatible across platforms** - indexes built on one platform cannot be searched from another.
+> **⚠️ Cross-Platform Note:** iOS semantic-search uses Apple's NLEmbedding (512-dim) while Android uses MiniLM-L6-v2 TFLite (384-dim). Embeddings are **not compatible across platforms** - indexes built on one platform cannot be searched from another. See [X-Plat-Embeddings.md](../X-Plat-Embeddings.md) for details.
+
+## Features
+
+### Model Version Tracking
+
+Check for and apply model updates:
+
+```typescript
+import { checkForModelUpdate, updateModel } from '@local-intelligence/core';
+
+// Check if update available
+const { hasUpdate, currentVersion, latestVersion } = await checkForModelUpdate('bert-small-pii');
+
+// Update to latest version
+if (hasUpdate) {
+  const { path, version } = await updateModel('bert-small-pii', (progress) => {
+    console.log(`Downloading: ${progress.progress * 100}%`);
+  });
+}
+```
+
+### Memory Pressure Handling
+
+Models are automatically unloaded when:
+
+- **iOS**: System sends memory warning and model idle > 30 seconds
+- **Android**: `onTrimMemory` called with moderate+ level and model idle
+
+Manual unload:
+
+```typescript
+import { unloadModel } from '@local-intelligence/semantic-search';
+await unloadModel(); // Frees memory immediately
+```
+
+### Accuracy Benchmarks
+
+Run benchmarks to validate model accuracy:
+
+```bash
+npm run benchmark:pii      # PII detection (target: F1 > 0.80)
+npm run benchmark:sentiment # Sentiment analysis (target: accuracy > 0.88)
+npm run benchmark:semantic  # Semantic search (target: Spearman > 0.70)
+```
+
+See `benchmarks/README.md` for details.
 
 ## Getting Started
 

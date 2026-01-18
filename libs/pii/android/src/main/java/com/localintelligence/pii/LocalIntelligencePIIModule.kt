@@ -3,6 +3,8 @@ package com.localintelligence.pii
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.localintelligence.core.WordPieceTokenizer
@@ -14,10 +16,11 @@ import java.nio.LongBuffer
 import java.util.regex.Pattern
 
 class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext) {
+    ReactContextBaseJavaModule(reactContext), ComponentCallbacks2 {
 
     companion object {
         const val NAME = "LocalIntelligencePII"
+        const val MEMORY_PRESSURE_IDLE_THRESHOLD_MS = 30_000L
 
         // PII Labels from gravitee-io/bert-small-pii-detection model
         val PII_LABELS = listOf(
@@ -64,6 +67,46 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
     @Volatile private var ortSession: OrtSession? = null
     @Volatile private var tokenizer: WordPieceTokenizer? = null
     private val modelLock = Any()
+    @Volatile private var lastAccessTimeMs: Long = System.currentTimeMillis()
+
+    init {
+        reactApplicationContext.registerComponentCallbacks(this)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {}
+
+    override fun onLowMemory() {
+        handleMemoryPressure(ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        handleMemoryPressure(level)
+    }
+
+    private fun handleMemoryPressure(level: Int) {
+        val timeSinceLastAccess = System.currentTimeMillis() - lastAccessTimeMs
+        
+        when {
+            level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+                unloadModelInternal()
+            }
+            level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE && timeSinceLastAccess > MEMORY_PRESSURE_IDLE_THRESHOLD_MS -> {
+                unloadModelInternal()
+            }
+            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND && timeSinceLastAccess > MEMORY_PRESSURE_IDLE_THRESHOLD_MS * 2 -> {
+                unloadModelInternal()
+            }
+        }
+    }
+
+    private fun unloadModelInternal() {
+        synchronized(modelLock) {
+            ortSession?.close()
+            ortSession = null
+            tokenizer = null
+            isModelReady = false
+        }
+    }
 
     private val regexPatterns = mapOf(
         "email_address" to PatternInfo(

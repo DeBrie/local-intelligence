@@ -2,6 +2,7 @@ import Foundation
 import NaturalLanguage
 import React
 import onnxruntime_objc
+import UIKit
 
 @objc(LocalIntelligencePII)
 class LocalIntelligencePII: RCTEventEmitter {
@@ -17,6 +18,8 @@ class LocalIntelligencePII: RCTEventEmitter {
     private var tokenizer: WordPieceTokenizer?
     private var isModelReady = false
     private let modelLock = NSLock()
+    private var memoryWarningObserver: NSObjectProtocol?
+    private var lastAccessTime: Date = Date()
     
     // PII Labels from gravitee-io/bert-small-pii-detection model
     private let piiLabels = [
@@ -79,6 +82,38 @@ class LocalIntelligencePII: RCTEventEmitter {
     
     override init() {
         super.init()
+        setupMemoryWarningObserver()
+    }
+    
+    deinit {
+        if let observer = memoryWarningObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+    
+    private func setupMemoryWarningObserver() {
+        memoryWarningObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleMemoryWarning()
+        }
+    }
+    
+    private func handleMemoryWarning() {
+        let timeSinceLastAccess = Date().timeIntervalSince(lastAccessTime)
+        if timeSinceLastAccess > 30 {
+            unloadModelInternal()
+        }
+    }
+    
+    private func unloadModelInternal() {
+        modelLock.lock()
+        defer { modelLock.unlock() }
+        ortSession = nil
+        tokenizer = nil
+        isModelReady = false
     }
     
     @objc override static func requiresMainQueueSetup() -> Bool {
