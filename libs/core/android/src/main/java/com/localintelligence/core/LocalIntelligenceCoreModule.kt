@@ -2,6 +2,7 @@ package com.localintelligence.core
 
 import android.app.ActivityManager
 import android.content.Context
+import android.content.res.AssetManager
 import android.os.Build
 import com.facebook.react.bridge.*
 import com.facebook.react.module.annotations.ReactModule
@@ -318,13 +319,71 @@ class LocalIntelligenceCoreModule(reactContext: ReactApplicationContext) : React
 
     private fun getModelPath(modelId: String): String? {
         val cacheDir = getCacheDirectory() ?: return null
-        // Check for both formats
+        // Check for both formats in cache
         val onnxFile = File(cacheDir, "$modelId.onnx")
         if (onnxFile.exists()) return onnxFile.absolutePath
         val tfliteFile = File(cacheDir, "$modelId.tflite")
         if (tfliteFile.exists()) return tfliteFile.absolutePath
+        
+        // Check for bundled model in assets and extract if available
+        val bundledPath = extractBundledModelIfExists(modelId)
+        if (bundledPath != null) return bundledPath
+        
         // Default to tflite for new downloads
         return tfliteFile.absolutePath
+    }
+    
+    private fun extractBundledModelIfExists(modelId: String): String? {
+        val cacheDir = getCacheDirectory() ?: return null
+        val assets = reactApplicationContext.assets
+        
+        // Try different extensions for bundled models
+        val extensions = listOf("onnx", "tflite")
+        for (ext in extensions) {
+            val assetPath = "models/$modelId.$ext"
+            try {
+                assets.open(assetPath).use { input ->
+                    val destFile = File(cacheDir, "$modelId.$ext")
+                    FileOutputStream(destFile).use { output ->
+                        input.copyTo(output)
+                    }
+                    
+                    // Also try to extract vocab if bundled
+                    try {
+                        assets.open("models/$modelId.vocab.txt").use { vocabInput ->
+                            val vocabFile = File(cacheDir, "$modelId.vocab.txt")
+                            FileOutputStream(vocabFile).use { vocabOutput ->
+                                vocabInput.copyTo(vocabOutput)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Vocab not bundled, that's ok
+                    }
+                    
+                    return destFile.absolutePath
+                }
+            } catch (e: Exception) {
+                // Asset doesn't exist for this extension, try next
+            }
+        }
+        return null
+    }
+    
+    @ReactMethod
+    fun hasBundledModel(modelId: String, promise: Promise) {
+        val assets = reactApplicationContext.assets
+        val extensions = listOf("onnx", "tflite")
+        
+        for (ext in extensions) {
+            try {
+                assets.open("models/$modelId.$ext").close()
+                promise.resolve(true)
+                return
+            } catch (e: Exception) {
+                // Not found with this extension
+            }
+        }
+        promise.resolve(false)
     }
 
     private fun checkNNAPIAvailability(): Boolean {

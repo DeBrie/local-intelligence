@@ -352,7 +352,70 @@ class LocalIntelligenceCore: RCTEventEmitter {
     
     private func getModelPath(modelId: String) -> String? {
         guard let cacheDir = getCacheDirectory() else { return nil }
-        return (cacheDir as NSString).appendingPathComponent("\(modelId).mlmodel")
+        
+        // Check for different formats in cache
+        let onnxPath = (cacheDir as NSString).appendingPathComponent("\(modelId).onnx")
+        if FileManager.default.fileExists(atPath: onnxPath) {
+            return onnxPath
+        }
+        
+        let mlmodelPath = (cacheDir as NSString).appendingPathComponent("\(modelId).mlmodel")
+        if FileManager.default.fileExists(atPath: mlmodelPath) {
+            return mlmodelPath
+        }
+        
+        // Check for bundled model and extract if available
+        if let bundledPath = extractBundledModelIfExists(modelId: modelId) {
+            return bundledPath
+        }
+        
+        // Default to onnx for new downloads
+        return onnxPath
+    }
+    
+    private func extractBundledModelIfExists(modelId: String) -> String? {
+        guard let cacheDir = getCacheDirectory() else { return nil }
+        
+        let extensions = ["onnx", "mlmodel"]
+        for ext in extensions {
+            if let bundledURL = Bundle.main.url(forResource: modelId, withExtension: ext, subdirectory: "models") {
+                let destPath = (cacheDir as NSString).appendingPathComponent("\(modelId).\(ext)")
+                let destURL = URL(fileURLWithPath: destPath)
+                
+                do {
+                    if FileManager.default.fileExists(atPath: destPath) {
+                        try FileManager.default.removeItem(atPath: destPath)
+                    }
+                    try FileManager.default.copyItem(at: bundledURL, to: destURL)
+                    
+                    // Also try to extract vocab if bundled
+                    if let vocabURL = Bundle.main.url(forResource: "\(modelId).vocab", withExtension: "txt", subdirectory: "models") {
+                        let vocabDestPath = (cacheDir as NSString).appendingPathComponent("\(modelId).vocab.txt")
+                        if FileManager.default.fileExists(atPath: vocabDestPath) {
+                            try FileManager.default.removeItem(atPath: vocabDestPath)
+                        }
+                        try FileManager.default.copyItem(at: vocabURL, to: URL(fileURLWithPath: vocabDestPath))
+                    }
+                    
+                    return destPath
+                } catch {
+                    // Failed to extract, continue
+                }
+            }
+        }
+        return nil
+    }
+    
+    @objc(hasBundledModel:withResolver:withRejecter:)
+    func hasBundledModel(modelId: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        let extensions = ["onnx", "mlmodel"]
+        for ext in extensions {
+            if Bundle.main.url(forResource: modelId, withExtension: ext, subdirectory: "models") != nil {
+                resolve(true)
+                return
+            }
+        }
+        resolve(false)
     }
     
     private func getFileSize(path: String) -> Int64 {

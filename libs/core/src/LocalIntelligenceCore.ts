@@ -144,6 +144,10 @@ export async function getCacheSize(): Promise<number> {
   return LocalIntelligenceCoreModule.getCacheSize();
 }
 
+export async function hasBundledModel(modelId: string): Promise<boolean> {
+  return LocalIntelligenceCoreModule.hasBundledModel(modelId);
+}
+
 export function isReady(): boolean {
   return isInitialized;
 }
