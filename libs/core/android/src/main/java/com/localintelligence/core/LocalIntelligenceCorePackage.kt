@@ -26,7 +26,7 @@ class LocalIntelligenceCorePackage : TurboReactPackage() {
                     false,
                     true,
                     false,
-                    true
+                    false
                 )
             )
         }
