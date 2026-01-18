@@ -1,6 +1,7 @@
 import Foundation
 import NaturalLanguage
 import React
+import onnxruntime_objc
 
 @objc(LocalIntelligencePII)
 class LocalIntelligencePII: RCTEventEmitter {
@@ -9,6 +10,23 @@ class LocalIntelligencePII: RCTEventEmitter {
     private var config: PIIConfig = PIIConfig()
     private var customPatterns: [String: CustomPattern] = [:]
     private var stats = PIIStats()
+    
+    // ONNX Runtime for BERT PII model
+    private var ortSession: ORTSession?
+    private var ortEnv: ORTEnv?
+    private var tokenizer: WordPieceTokenizer?
+    private var isModelReady = false
+    private let modelLock = NSLock()
+    
+    // PII Labels from gravitee-io/bert-small-pii-detection model
+    private let piiLabels = [
+        "O",  // Outside (not PII)
+        "AGE", "COORDINATE", "CREDIT_CARD", "DATE_TIME", "EMAIL_ADDRESS",
+        "FINANCIAL", "IBAN_CODE", "IMEI", "IP_ADDRESS", "LOCATION",
+        "MAC_ADDRESS", "NRP", "ORGANIZATION", "PASSWORD", "PERSON",
+        "PHONE_NUMBER", "TITLE", "URL", "US_BANK_NUMBER", "US_DRIVER_LICENSE",
+        "US_ITIN", "US_LICENSE_PLATE", "US_PASSPORT", "US_SSN"
+    ]
     
     private let regexPatterns: [String: (pattern: String, type: String)] = [
         "email": ("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "email"),
@@ -108,8 +126,13 @@ class LocalIntelligencePII: RCTEventEmitter {
             let startTime = CFAbsoluteTimeGetCurrent()
             var entities: [PIIEntity] = []
             
-            // NLTagger for named entities
-            if self.config.enabledTypes.contains(where: { ["person", "organization", "location"].contains($0) }) {
+            // Try BERT model first for better accuracy
+            if self.isModelReady {
+                self.detectWithBERT(text: text, entities: &entities)
+            }
+            
+            // NLTagger for named entities (fallback when BERT not available or for additional coverage)
+            if !self.isModelReady && self.config.enabledTypes.contains(where: { ["person", "organization", "location"].contains($0) }) {
                 let tagger = NLTagger(tagSchemes: [.nameType])
                 tagger.string = text
                 
@@ -545,5 +568,182 @@ class LocalIntelligencePII: RCTEventEmitter {
         for entity in entities {
             stats.byType[entity.type, default: 0] += 1
         }
+    }
+    
+    // MARK: - BERT Model Support
+    
+    @objc(notifyModelDownloaded:withPath:)
+    func notifyModelDownloaded(_ modelId: String, path: String) {
+        // Called from JS when core module emits LocalIntelligenceModelDownloaded
+        if modelId == "bert-small-pii" {
+            let modelFile = URL(fileURLWithPath: path)
+            let vocabFile = modelFile.deletingLastPathComponent().appendingPathComponent("bert-small-pii.vocab.txt")
+            if FileManager.default.fileExists(atPath: modelFile.path) &&
+               FileManager.default.fileExists(atPath: vocabFile.path) {
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    self?.loadOnnxModel(modelFile: modelFile, vocabFile: vocabFile)
+                }
+            }
+        }
+    }
+    
+    private func loadOnnxModel(modelFile: URL, vocabFile: URL) {
+        modelLock.lock()
+        defer { modelLock.unlock() }
+        
+        do {
+            // Load tokenizer first
+            tokenizer = try WordPieceTokenizer(vocabFile: vocabFile)
+            
+            // Initialize ONNX Runtime environment
+            ortEnv = try ORTEnv(loggingLevel: .warning)
+            
+            // Create session options
+            let sessionOptions = try ORTSessionOptions()
+            try sessionOptions.setGraphOptimizationLevel(.all)
+            
+            // Create session
+            ortSession = try ORTSession(env: ortEnv!, modelPath: modelFile.path, sessionOptions: sessionOptions)
+            
+            isModelReady = true
+        } catch {
+            tokenizer = nil
+            ortSession = nil
+            ortEnv = nil
+            isModelReady = false
+        }
+    }
+    
+    private func detectWithBERT(text: String, entities: inout [PIIEntity]) {
+        modelLock.lock()
+        guard let session = ortSession,
+              let tok = tokenizer,
+              isModelReady else {
+            modelLock.unlock()
+            return
+        }
+        modelLock.unlock()
+        
+        do {
+            let maxLength = 512
+            let tokenized = tok.tokenize(text: text, maxLength: maxLength)
+            
+            // Create input tensors
+            let inputIdsData = Data(bytes: tokenized.inputIds.map { Int64($0) }, count: maxLength * MemoryLayout<Int64>.size)
+            let attentionMaskData = Data(bytes: tokenized.attentionMask.map { Int64($0) }, count: maxLength * MemoryLayout<Int64>.size)
+            
+            let inputShape: [NSNumber] = [1, NSNumber(value: maxLength)]
+            
+            let inputIdsTensor = try ORTValue(tensorData: NSMutableData(data: inputIdsData),
+                                               elementType: .int64,
+                                               shape: inputShape)
+            let attentionMaskTensor = try ORTValue(tensorData: NSMutableData(data: attentionMaskData),
+                                                    elementType: .int64,
+                                                    shape: inputShape)
+            
+            // Run inference
+            let outputs = try session.run(withInputs: [
+                "input_ids": inputIdsTensor,
+                "attention_mask": attentionMaskTensor
+            ], outputNames: ["logits"], runOptions: nil)
+            
+            guard let logitsValue = outputs["logits"] else { return }
+            
+            // Get logits data
+            let logitsData = try logitsValue.tensorData() as Data
+            let logitsCount = maxLength * piiLabels.count
+            var logits = [Float](repeating: 0, count: logitsCount)
+            logitsData.copyBytes(to: &logits, count: logitsCount * MemoryLayout<Float>.size)
+            
+            // Parse predictions
+            var predictions: [(Int, String)] = []
+            for i in 0..<tokenized.tokenCount {
+                if tokenized.attentionMask[i] == 0 { continue }
+                
+                // Find max logit for this token
+                let startIdx = i * piiLabels.count
+                var maxIdx = 0
+                var maxVal = logits[startIdx]
+                for j in 1..<piiLabels.count {
+                    if logits[startIdx + j] > maxVal {
+                        maxVal = logits[startIdx + j]
+                        maxIdx = j
+                    }
+                }
+                
+                let label = piiLabels[maxIdx]
+                if label != "O" && config.enabledTypes.contains(label.lowercased()) {
+                    predictions.append((i, label))
+                }
+            }
+            
+            // Convert predictions to entities
+            convertPredictionsToEntities(text: text, tokenized: tokenized, predictions: predictions, entities: &entities)
+            
+        } catch {
+            // Silently fail, will use NLTagger fallback
+        }
+    }
+    
+    private func convertPredictionsToEntities(text: String, tokenized: WordPieceTokenizer.TokenizedResult, predictions: [(Int, String)], entities: inout [PIIEntity]) {
+        var currentLabel: String? = nil
+        var currentStart = -1
+        var currentEnd = -1
+        
+        for (tokenIdx, label) in predictions {
+            let charStart = tokenized.tokenToCharStart[tokenIdx]
+            let charEnd = tokenized.tokenToCharEnd[tokenIdx]
+            
+            if charStart < 0 { continue }
+            
+            if label == currentLabel && charStart <= currentEnd + 2 {
+                // Extend current entity
+                currentEnd = charEnd
+            } else {
+                // Save previous entity if exists
+                if let prevLabel = currentLabel, currentStart >= 0, currentEnd <= text.count {
+                    let startIdx = text.index(text.startIndex, offsetBy: currentStart)
+                    let endIdx = text.index(text.startIndex, offsetBy: currentEnd)
+                    entities.append(PIIEntity(
+                        type: prevLabel.lowercased(),
+                        text: String(text[startIdx..<endIdx]),
+                        startIndex: currentStart,
+                        endIndex: currentEnd,
+                        confidence: 0.85
+                    ))
+                }
+                // Start new entity
+                currentLabel = label
+                currentStart = charStart
+                currentEnd = charEnd
+            }
+        }
+        
+        // Don't forget last entity
+        if let prevLabel = currentLabel, currentStart >= 0, currentEnd <= text.count {
+            let startIdx = text.index(text.startIndex, offsetBy: currentStart)
+            let endIdx = text.index(text.startIndex, offsetBy: currentEnd)
+            entities.append(PIIEntity(
+                type: prevLabel.lowercased(),
+                text: String(text[startIdx..<endIdx]),
+                startIndex: currentStart,
+                endIndex: currentEnd,
+                confidence: 0.85
+            ))
+        }
+    }
+    
+    private func triggerModelDownload() {
+        // Check if model already exists in cache
+        guard let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let cacheDir = documentsDir.appendingPathComponent("local_intelligence_models")
+        let modelFile = cacheDir.appendingPathComponent("bert-small-pii.onnx")
+        let vocabFile = cacheDir.appendingPathComponent("bert-small-pii.vocab.txt")
+        
+        if FileManager.default.fileExists(atPath: modelFile.path) &&
+           FileManager.default.fileExists(atPath: vocabFile.path) {
+            loadOnnxModel(modelFile: modelFile, vocabFile: vocabFile)
+        }
+        // Model not downloaded yet - will use NLTagger until downloaded via core module
     }
 }

@@ -13,4 +13,5 @@ Pod::Spec.new do |s|
   s.source       = { :git => package['repository']['url'], :tag => "v#{s.version}" }
   s.source_files = 'ios/**/*.{h,m,mm,swift}'
   s.dependency 'React-Core'
+  s.dependency 'onnxruntime-objc', '~> 1.16.0'
 end

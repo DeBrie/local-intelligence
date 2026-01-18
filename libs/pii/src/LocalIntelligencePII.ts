@@ -29,6 +29,7 @@ const LocalIntelligencePIIModule = NativeModule
 let eventEmitter: NativeEventEmitter | null = null;
 let isInitialized = false;
 let currentConfig: PIIConfig = {};
+let modelDownloadSubscription: { remove: () => void } | null = null;
 
 function getEventEmitter(): NativeEventEmitter {
   if (!eventEmitter) {
@@ -57,7 +58,9 @@ export async function initialize(config: PIIConfig = {}): Promise<boolean> {
     preserveLength: config.preserveLength ?? true,
   };
 
-  const result = await LocalIntelligencePIIModule.initialize(JSON.stringify(nativeConfig));
+  const result = await LocalIntelligencePIIModule.initialize(
+    JSON.stringify(nativeConfig),
+  );
   if (result) {
     isInitialized = true;
     currentConfig = config;
@@ -67,13 +70,43 @@ export async function initialize(config: PIIConfig = {}): Promise<boolean> {
         await addCustomPattern(pattern);
       }
     }
+
+    subscribeToModelDownloads();
   }
   return result;
 }
 
+function subscribeToModelDownloads(): void {
+  if (modelDownloadSubscription) {
+    return;
+  }
+
+  try {
+    const CoreModule = NativeModules.LocalIntelligenceCore;
+    if (CoreModule) {
+      const coreEmitter = new NativeEventEmitter(CoreModule);
+      modelDownloadSubscription = coreEmitter.addListener(
+        'LocalIntelligenceModelDownloaded',
+        (event: { modelId: string; path: string }) => {
+          if (event.modelId === 'bert-small-pii') {
+            LocalIntelligencePIIModule.notifyModelDownloaded?.(
+              event.modelId,
+              event.path,
+            );
+          }
+        },
+      );
+    }
+  } catch {
+    // Core module not available, skip subscription
+  }
+}
+
 export async function detectEntities(text: string): Promise<PIIEntity[]> {
   if (!isInitialized) {
-    throw new Error('@local-intelligence/pii is not initialized. Call initialize() first.');
+    throw new Error(
+      '@local-intelligence/pii is not initialized. Call initialize() first.',
+    );
   }
 
   const resultJson = await LocalIntelligencePIIModule.detectEntities(text);
@@ -82,7 +115,9 @@ export async function detectEntities(text: string): Promise<PIIEntity[]> {
 
 export async function redact(text: string): Promise<RedactionResult> {
   if (!isInitialized) {
-    throw new Error('@local-intelligence/pii is not initialized. Call initialize() first.');
+    throw new Error(
+      '@local-intelligence/pii is not initialized. Call initialize() first.',
+    );
   }
 
   const resultJson = await LocalIntelligencePIIModule.redactText(text);
@@ -91,7 +126,9 @@ export async function redact(text: string): Promise<RedactionResult> {
 
 export async function redactBatch(texts: string[]): Promise<RedactionResult[]> {
   if (!isInitialized) {
-    throw new Error('@local-intelligence/pii is not initialized. Call initialize() first.');
+    throw new Error(
+      '@local-intelligence/pii is not initialized. Call initialize() first.',
+    );
   }
 
   const resultJson = await LocalIntelligencePIIModule.redactBatch(texts);
@@ -102,7 +139,9 @@ export async function addCustomPattern(
   pattern: CustomPattern,
 ): Promise<boolean> {
   if (!isInitialized) {
-    throw new Error('@local-intelligence/pii is not initialized. Call initialize() first.');
+    throw new Error(
+      '@local-intelligence/pii is not initialized. Call initialize() first.',
+    );
   }
 
   return LocalIntelligencePIIModule.addCustomPattern(
@@ -114,7 +153,9 @@ export async function addCustomPattern(
 
 export async function removeCustomPattern(name: string): Promise<boolean> {
   if (!isInitialized) {
-    throw new Error('@local-intelligence/pii is not initialized. Call initialize() first.');
+    throw new Error(
+      '@local-intelligence/pii is not initialized. Call initialize() first.',
+    );
   }
 
   return LocalIntelligencePIIModule.removeCustomPattern(name);
@@ -122,7 +163,9 @@ export async function removeCustomPattern(name: string): Promise<boolean> {
 
 export async function getStats(): Promise<PIIStats> {
   if (!isInitialized) {
-    throw new Error('@local-intelligence/pii is not initialized. Call initialize() first.');
+    throw new Error(
+      '@local-intelligence/pii is not initialized. Call initialize() first.',
+    );
   }
 
   const resultJson = await LocalIntelligencePIIModule.getStats();
@@ -131,7 +174,9 @@ export async function getStats(): Promise<PIIStats> {
 
 export async function resetStats(): Promise<boolean> {
   if (!isInitialized) {
-    throw new Error('@local-intelligence/pii is not initialized. Call initialize() first.');
+    throw new Error(
+      '@local-intelligence/pii is not initialized. Call initialize() first.',
+    );
   }
 
   return LocalIntelligencePIIModule.resetStats();
