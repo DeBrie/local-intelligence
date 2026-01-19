@@ -8,6 +8,65 @@ PODS:
   - hermes-engine (0.79.7):
     - hermes-engine/Pre-built (= 0.79.7)
   - hermes-engine/Pre-built (0.79.7)
+  - local-intelligence-core (0.0.1):
+    - DoubleConversion
+    - glog
+    - hermes-engine
+    - RCT-Folly (= 2024.11.18.00)
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-hermes
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - Yoga
+  - local-intelligence-pii (0.0.1):
+    - onnxruntime-objc (~> 1.16.0)
+    - React-Core
+  - local-intelligence-semantic-search (0.1.0):
+    - DoubleConversion
+    - glog
+    - hermes-engine
+    - RCT-Folly (= 2024.11.18.00)
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-hermes
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - Yoga
+  - local-intelligence-sentiment (0.0.1):
+    - onnxruntime-objc (~> 1.16.0)
+    - React-Core
+  - onnxruntime-c (1.16.3)
+  - onnxruntime-objc (1.16.3):
+    - onnxruntime-objc/Core (= 1.16.3)
+  - onnxruntime-objc/Core (1.16.3):
+    - onnxruntime-c (= 1.16.3)
   - op-sqlite (11.4.9):
     - DoubleConversion
     - glog
@@ -1866,6 +1925,11 @@ DEPENDENCIES:
   - fmt (from `../../../node_modules/react-native/third-party-podspecs/fmt.podspec`)
   - glog (from `../../../node_modules/react-native/third-party-podspecs/glog.podspec`)
   - hermes-engine (from `../../../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
+  - local-intelligence-core (from `../../../libs/core`)
+  - local-intelligence-pii (from `../../../libs/pii`)
+  - local-intelligence-semantic-search (from `../../../libs/semantic-search`)
+  - local-intelligence-sentiment (from `../../../libs/sentiment`)
+  - onnxruntime-objc
   - "op-sqlite (from `../../../node_modules/@op-engineering/op-sqlite`)"
   - RCT-Folly (from `../../../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec`)
   - RCT-Folly/Fabric (from `../../../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec`)
@@ -1938,6 +2002,8 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - onnxruntime-c
+    - onnxruntime-objc
     - SocketRocket
 
 EXTERNAL SOURCES:
@@ -1956,6 +2022,14 @@ EXTERNAL SOURCES:
   hermes-engine:
     :podspec: "../../../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec"
     :tag: hermes-2025-06-04-RNv0.79.3-7f9a871eefeb2c3852365ee80f0b6733ec12ac3b
+  local-intelligence-core:
+    :path: "../../../libs/core"
+  local-intelligence-pii:
+    :path: "../../../libs/pii"
+  local-intelligence-semantic-search:
+    :path: "../../../libs/semantic-search"
+  local-intelligence-sentiment:
+    :path: "../../../libs/sentiment"
   op-sqlite:
     :path: "../../../node_modules/@op-engineering/op-sqlite"
   RCT-Folly:
@@ -2099,6 +2173,12 @@ SPEC CHECKSUMS:
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
   hermes-engine: 13c84524b3b6e884b2cf3b3b1e002ffd147d88a3
+  local-intelligence-core: 7f7dddc7b6e228d6b25851274feeb8e2adc76b4f
+  local-intelligence-pii: 2b74d54c2aa9e469781d566aece6e2c312e1b7a5
+  local-intelligence-semantic-search: 64f9524e2fb2d5b8b304d29f7ccff8da66cbb9e3
+  local-intelligence-sentiment: 28b43e757bdda09b6c1f0ac4d79d12bb4c2eae30
+  onnxruntime-c: 74e86835396f767f56835ea44cfe7630d8e58a4b
+  onnxruntime-objc: 67a7633965d57f9648a0c7cc858d32c5c6b414f4
   op-sqlite: 8012bfa2b0c9e699984371e4df3c293e07f7ef6a
   RCT-Folly: e78785aa9ba2ed998ea4151e314036f6c49e6d82
   RCTDeprecation: b9b1716eec53aaeaa859aa45e27de7b615cff732
@@ -2168,6 +2248,6 @@ SPEC CHECKSUMS:
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   Yoga: 9663a18d096f7f7e17a535cf00849db756709955
 
-PODFILE CHECKSUM: e075525c89760925eceb99aa574ca30045eba5e8
+PODFILE CHECKSUM: 98d36eb58cf6e9481fbe2a45524500ee346d6afe
 
 COCOAPODS: 1.16.2

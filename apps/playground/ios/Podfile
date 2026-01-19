@@ -17,6 +17,15 @@ end
 target 'Playground' do
   config = use_native_modules!
 
+  # Local intelligence libraries (not autolinked)
+  pod 'local-intelligence-core', :path => '../../../libs/core'
+  pod 'local-intelligence-pii', :path => '../../../libs/pii'
+  pod 'local-intelligence-sentiment', :path => '../../../libs/sentiment'
+  pod 'local-intelligence-semantic-search', :path => '../../../libs/semantic-search'
+  
+  # Enable modular headers for onnxruntime (required for Swift static libraries)
+  pod 'onnxruntime-objc', :modular_headers => true
+
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.
