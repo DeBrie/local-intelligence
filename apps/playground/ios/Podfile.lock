@@ -8,58 +8,6 @@ PODS:
   - hermes-engine (0.79.7):
     - hermes-engine/Pre-built (= 0.79.7)
   - hermes-engine/Pre-built (0.79.7)
-  - local-intelligence-core (0.0.1):
-    - DoubleConversion
-    - glog
-    - hermes-engine
-    - RCT-Folly (= 2024.11.18.00)
-    - RCTRequired
-    - RCTTypeSafety
-    - React-Core
-    - React-debug
-    - React-Fabric
-    - React-featureflags
-    - React-graphics
-    - React-hermes
-    - React-ImageManager
-    - React-jsi
-    - React-NativeModulesApple
-    - React-RCTFabric
-    - React-renderercss
-    - React-rendererdebug
-    - React-utils
-    - ReactCodegen
-    - ReactCommon/turbomodule/bridging
-    - ReactCommon/turbomodule/core
-    - Yoga
-  - local-intelligence-pii (0.0.1):
-    - React-Core
-  - local-intelligence-semantic-search (0.1.0):
-    - DoubleConversion
-    - glog
-    - hermes-engine
-    - RCT-Folly (= 2024.11.18.00)
-    - RCTRequired
-    - RCTTypeSafety
-    - React-Core
-    - React-debug
-    - React-Fabric
-    - React-featureflags
-    - React-graphics
-    - React-hermes
-    - React-ImageManager
-    - React-jsi
-    - React-NativeModulesApple
-    - React-RCTFabric
-    - React-renderercss
-    - React-rendererdebug
-    - React-utils
-    - ReactCodegen
-    - ReactCommon/turbomodule/bridging
-    - ReactCommon/turbomodule/core
-    - Yoga
-  - local-intelligence-sentiment (0.0.1):
-    - React-Core
   - op-sqlite (11.4.9):
     - DoubleConversion
     - glog
@@ -1918,10 +1866,6 @@ DEPENDENCIES:
   - fmt (from `../../../node_modules/react-native/third-party-podspecs/fmt.podspec`)
   - glog (from `../../../node_modules/react-native/third-party-podspecs/glog.podspec`)
   - hermes-engine (from `../../../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
-  - "local-intelligence-core (from `../../../node_modules/@local-intelligence/core`)"
-  - "local-intelligence-pii (from `../../../node_modules/@local-intelligence/pii`)"
-  - "local-intelligence-semantic-search (from `../../../node_modules/@local-intelligence/semantic-search`)"
-  - "local-intelligence-sentiment (from `../../../node_modules/@local-intelligence/sentiment`)"
   - "op-sqlite (from `../../../node_modules/@op-engineering/op-sqlite`)"
   - RCT-Folly (from `../../../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec`)
   - RCT-Folly/Fabric (from `../../../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec`)
@@ -2012,14 +1956,6 @@ EXTERNAL SOURCES:
   hermes-engine:
     :podspec: "../../../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec"
     :tag: hermes-2025-06-04-RNv0.79.3-7f9a871eefeb2c3852365ee80f0b6733ec12ac3b
-  local-intelligence-core:
-    :path: "../../../node_modules/@local-intelligence/core"
-  local-intelligence-pii:
-    :path: "../../../node_modules/@local-intelligence/pii"
-  local-intelligence-semantic-search:
-    :path: "../../../node_modules/@local-intelligence/semantic-search"
-  local-intelligence-sentiment:
-    :path: "../../../node_modules/@local-intelligence/sentiment"
   op-sqlite:
     :path: "../../../node_modules/@op-engineering/op-sqlite"
   RCT-Folly:
@@ -2163,10 +2099,6 @@ SPEC CHECKSUMS:
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
   hermes-engine: 13c84524b3b6e884b2cf3b3b1e002ffd147d88a3
-  local-intelligence-core: 25ad11fa40de7e402cdf8c92eb0a2fbe065db186
-  local-intelligence-pii: c30a99825772533380028c475376a063b3ea0056
-  local-intelligence-semantic-search: 64f9524e2fb2d5b8b304d29f7ccff8da66cbb9e3
-  local-intelligence-sentiment: d753b32ee177a440879582be9a4f56bb26d6e123
   op-sqlite: 8012bfa2b0c9e699984371e4df3c293e07f7ef6a
   RCT-Folly: e78785aa9ba2ed998ea4151e314036f6c49e6d82
   RCTDeprecation: b9b1716eec53aaeaa859aa45e27de7b615cff732

@@ -548,9 +548,7 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
                 if (!vocabFile.exists()) return
                 
                 // Initialize tokenizer
-                FileInputStream(vocabFile).use { fis ->
-                    tokenizer = WordPieceTokenizer(fis)
-                }
+                tokenizer = WordPieceTokenizer(vocabFile)
                 
                 // Initialize ONNX Runtime
                 ortEnvironment = OrtEnvironment.getEnvironment()
