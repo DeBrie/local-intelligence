@@ -435,6 +435,27 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
         promise.resolve(true)
     }
 
+    @ReactMethod
+    fun getModelStatus(promise: Promise) {
+        try {
+            val status = when {
+                isModelReady -> "ready"
+                isModelDownloading -> "downloading"
+                else -> "not_ready"
+            }
+            
+            val result = JSONObject().apply {
+                put("status", status)
+                put("modelId", "bert-small-pii")
+                put("isModelReady", isModelReady)
+            }
+            
+            promise.resolve(result.toString())
+        } catch (e: Exception) {
+            promise.reject("STATUS_ERROR", "Failed to get model status", e)
+        }
+    }
+
     private fun detectEntitiesInternal(text: String): List<PIIEntity> {
         val entities = mutableListOf<PIIEntity>()
         

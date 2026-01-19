@@ -496,6 +496,24 @@ class LocalIntelligencePII: RCTEventEmitter {
         resolve(true)
     }
     
+    @objc(getModelStatus:withRejecter:)
+    func getModelStatus(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        let status = isModelReady ? "ready" : "not_ready"
+        let result: [String: Any] = [
+            "status": status,
+            "modelId": "bert-small-pii",
+            "isModelReady": isModelReady
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: result)
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+            resolve(jsonString)
+        } catch {
+            reject("STATUS_ERROR", "Failed to get model status", error)
+        }
+    }
+    
     private func removeOverlappingEntities(_ entities: [PIIEntity]) -> [PIIEntity] {
         var result: [PIIEntity] = []
         var lastEnd = -1
@@ -604,7 +622,12 @@ class LocalIntelligencePII: RCTEventEmitter {
             let logitsData = try logitsValue.tensorData() as Data
             let logitsCount = maxLength * piiLabels.count
             var logits = [Float](repeating: 0, count: logitsCount)
-            logitsData.copyBytes(to: &logits, count: logitsCount * MemoryLayout<Float>.size)
+            logitsData.withUnsafeBytes { rawBuffer in
+                let floatBuffer = rawBuffer.bindMemory(to: Float.self)
+                for i in 0..<min(logitsCount, floatBuffer.count) {
+                    logits[i] = floatBuffer[i]
+                }
+            }
             
             // Parse predictions
             var predictions: [(Int, String)] = []
