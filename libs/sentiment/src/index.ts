@@ -10,6 +10,8 @@ export {
   getConfig,
   getLabelEmoji,
   getLabelColor,
+  getModelStatus,
+  downloadModel,
 } from './LocalIntelligenceSentiment';
 
 export { useSentiment } from './useSentiment';
