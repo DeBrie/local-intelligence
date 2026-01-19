@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { HomeScreen, CoreDemoScreen, PIIDemoScreen, SentimentDemoScreen, SemanticSearchDemoScreen } from '../screens';
+import { HomeScreen, CoreDemoScreen, PIIDemoScreen, SentimentDemoScreen, SemanticSearchDemoScreen, ModelManagementScreen } from '../screens';
 
 export type RootStackParamList = {
     Home: undefined;
@@ -11,6 +11,7 @@ export type RootStackParamList = {
     SentimentDemo: undefined;
     SearchDemo: undefined;
     ChatDemo: undefined;
+    ModelManagement: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -55,6 +56,11 @@ export function App() {
                         name="SearchDemo"
                         component={SemanticSearchDemoScreen}
                         options={{ title: 'Semantic Search' }}
+                    />
+                    <Stack.Screen
+                        name="ModelManagement"
+                        component={ModelManagementScreen}
+                        options={{ title: 'Model Management' }}
                     />
                 </Stack.Navigator>
             </NavigationContainer>

@@ -3,3 +3,4 @@ export { CoreDemoScreen } from './CoreDemoScreen';
 export { PIIDemoScreen } from './PIIDemoScreen';
 export { SentimentDemoScreen } from './SentimentDemoScreen';
 export { SemanticSearchDemoScreen } from './SemanticSearchDemoScreen';
+export { ModelManagementScreen } from './ModelManagementScreen';

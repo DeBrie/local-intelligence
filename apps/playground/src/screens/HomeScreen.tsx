@@ -9,6 +9,14 @@ import {
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../app/App';
 
+const SettingsIcon = () => (
+    <View style={{ width: 24, height: 24, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#FFF', justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF' }} />
+        </View>
+    </View>
+);
+
 type HomeScreenProps = {
     navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
 };
@@ -55,8 +63,18 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     return (
         <ScrollView style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>@local-intelligence</Text>
-                <Text style={styles.subtitle}>On-Device AI Playground</Text>
+                <View style={styles.headerRow}>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.title}>@local-intelligence</Text>
+                        <Text style={styles.subtitle}>On-Device AI Playground</Text>
+                    </View>
+                    <TouchableOpacity
+                        style={styles.settingsButton}
+                        onPress={() => navigation.navigate('ModelManagement')}
+                    >
+                        <SettingsIcon />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <View style={styles.featuresContainer}>
@@ -165,5 +183,16 @@ const styles = StyleSheet.create({
     footerText: {
         fontSize: 12,
         color: '#999999',
+    },
+    headerRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    headerTextContainer: {
+        flex: 1,
+    },
+    settingsButton: {
+        padding: 8,
     },
 });
