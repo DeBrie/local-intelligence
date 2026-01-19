@@ -13,6 +13,7 @@ import {
     initialize,
     generateEmbedding,
     generateEmbeddingBatch,
+    getModelStatus,
 } from '@local-intelligence/semantic-search';
 
 interface SearchResult {
@@ -66,16 +67,27 @@ export function SemanticSearchDemoScreen() {
     const [results, setResults] = useState<SearchResult[]>([]);
     const [indexedDocs, setIndexedDocs] = useState<DocumentWithEmbedding[]>([]);
     const [embeddingDimensions, setEmbeddingDimensions] = useState(0);
+    const [modelStatus, setModelStatus] = useState<string>('unknown');
+
+    const checkModelStatus = async () => {
+        try {
+            const status = await getModelStatus();
+            setModelStatus(status.status);
+        } catch {
+            setModelStatus('unknown');
+        }
+    };
 
     const handleInitialize = async () => {
         setIsLoading(true);
         setError(null);
         try {
+            // Use default model ID (minilm-l6-v2 on Android, NLEmbedding on iOS)
             await initialize({
-                modelId: 'sentence-embedding',
-                embeddingDimensions: 512,
+                embeddingDimensions: 384, // MiniLM-L6-v2 uses 384 dimensions
             });
             setIsInitialized(true);
+            await checkModelStatus();
             Alert.alert('Success', 'Embedding model initialized (in-memory search)');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to initialize');
@@ -200,10 +212,25 @@ export function SemanticSearchDemoScreen() {
                     </View>
                 </View>
                 {isInitialized && (
-                    <View style={styles.statusRow}>
-                        <Text style={styles.statusLabel}>Indexed Documents:</Text>
-                        <Text style={styles.statusValue}>{indexedCount}</Text>
-                    </View>
+                    <>
+                        <View style={styles.statusRow}>
+                            <Text style={styles.statusLabel}>Model:</Text>
+                            <View
+                                style={[
+                                    styles.statusBadge,
+                                    { backgroundColor: modelStatus === 'ready' ? '#4CAF50' : '#FF9800' },
+                                ]}
+                            >
+                                <Text style={styles.statusBadgeText}>
+                                    {modelStatus === 'ready' ? 'Ready' : 'Downloading...'}
+                                </Text>
+                            </View>
+                        </View>
+                        <View style={styles.statusRow}>
+                            <Text style={styles.statusLabel}>Indexed Documents:</Text>
+                            <Text style={styles.statusValue}>{indexedCount}</Text>
+                        </View>
+                    </>
                 )}
             </View>
 
