@@ -9,7 +9,8 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
-import { useRedactor, getStats, resetStats } from '@local-intelligence/pii';
+import { useRedactor, getStats, resetStats, downloadModel, initialize as initializePII } from '@local-intelligence/pii';
+import { getModelStatus as getCoreModelStatus } from '@local-intelligence/core';
 import type { PIIEntity, PIIStats } from '@local-intelligence/pii';
 
 const SAMPLE_TEXTS = [
@@ -22,6 +23,10 @@ const SAMPLE_TEXTS = [
 export function PIIDemoScreen() {
     const [inputText, setInputText] = useState(SAMPLE_TEXTS[0]);
     const [stats, setStats] = useState<PIIStats | null>(null);
+    const [isModelDownloaded, setIsModelDownloaded] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [downloadProgress, setDownloadProgress] = useState(0);
+    const [isInitializingModel, setIsInitializingModel] = useState(false);
 
     // Using the useRedactor hook - the recommended way to integrate PII redaction
     const {
@@ -94,6 +99,69 @@ export function PIIDemoScreen() {
         reset(); // Clear previous results when loading new sample
     };
 
+    // Check model status when initialized
+    React.useEffect(() => {
+        if (isInitialized) {
+            checkModelStatus();
+        }
+    }, [isInitialized]);
+
+    const checkModelStatus = async () => {
+        try {
+            // Use Core module's getModelStatus which correctly reports download state
+            const status = await getCoreModelStatus('bert-small-pii');
+            setIsModelDownloaded(status.state === 'ready');
+        } catch {
+            // Model status check failed, ignore
+        }
+    };
+
+    const handleDownloadModel = async () => {
+        setIsDownloading(true);
+        setDownloadProgress(0);
+        try {
+            await downloadModel((progress) => {
+                setDownloadProgress(progress);
+            });
+            await checkModelStatus();
+            Alert.alert('Success', 'PII model downloaded successfully!');
+        } catch (err) {
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to download model');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
+    const handleInitializeModel = async () => {
+        setIsInitializingModel(true);
+        try {
+            await initializePII({
+                enabledTypes: [
+                    'person',
+                    'organization',
+                    'location',
+                    'email_address',
+                    'phone_number',
+                    'phone',
+                    'ssn',
+                    'us_ssn',
+                    'address',
+                    'email',
+                    'credit_card',
+                ],
+                redactionChar: '*',
+                minConfidence: 0.7,
+                preserveLength: true,
+            });
+            await checkModelStatus();
+            Alert.alert('Success', 'PII model initialized successfully!');
+        } catch (err) {
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to initialize model');
+        } finally {
+            setIsInitializingModel(false);
+        }
+    };
+
     const getEntityColor = (type: string): string => {
         const colors: Record<string, string> = {
             person: '#FF6B6B',
@@ -135,6 +203,76 @@ export function PIIDemoScreen() {
                         </Text>
                     </View>
                 </View>
+                <View style={styles.statusRow}>
+                    <Text style={styles.statusLabel}>BERT Model:</Text>
+                    <View
+                        style={[
+                            styles.statusBadge,
+                            { backgroundColor: isModelDownloaded ? '#4CAF50' : '#FF9800' },
+                        ]}
+                    >
+                        <Text style={styles.statusBadgeText}>
+                            {isModelDownloaded ? 'Downloaded' : 'Not Downloaded'}
+                        </Text>
+                    </View>
+                </View>
+                {isInitialized && (
+                    <View style={styles.downloadSection}>
+                        {isDownloading ? (
+                            <View style={styles.downloadProgress}>
+                                <ActivityIndicator size="small" color="#007AFF" />
+                                <Text style={styles.downloadText}>
+                                    Downloading... {downloadProgress.toFixed(0)}%
+                                </Text>
+                            </View>
+                        ) : isInitializingModel ? (
+                            <View style={styles.downloadProgress}>
+                                <ActivityIndicator size="small" color="#4CAF50" />
+                                <Text style={[styles.downloadText, { color: '#4CAF50' }]}>
+                                    Initializing model...
+                                </Text>
+                            </View>
+                        ) : (
+                            <View style={styles.modelButtonsColumn}>
+                                {!isModelDownloaded && (
+                                    <TouchableOpacity
+                                        style={styles.downloadButton}
+                                        onPress={handleDownloadModel}
+                                    >
+                                        <Text style={styles.downloadButtonText}>
+                                            Download Model (~30MB)
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+                                {isModelDownloaded && (
+                                    <>
+                                        <TouchableOpacity
+                                            style={styles.initializeButton}
+                                            onPress={handleInitializeModel}
+                                        >
+                                            <Text style={styles.downloadButtonText}>
+                                                Initialize Model
+                                            </Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={styles.redownloadButton}
+                                            onPress={handleDownloadModel}
+                                        >
+                                            <Text style={styles.downloadButtonText}>
+                                                Re-download Model
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </>
+                                )}
+                            </View>
+                        )}
+                        {!isModelDownloaded && (
+                            <Text style={styles.fallbackNote}>
+                                Currently using regex patterns for PII detection
+                            </Text>
+                        )}
+                    </View>
+                )}
             </View>
 
             {/* Sample Texts */}
@@ -544,5 +682,56 @@ const styles = StyleSheet.create({
     },
     footer: {
         height: 40,
+    },
+    downloadSection: {
+        marginTop: 12,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: '#EEE',
+    },
+    downloadProgress: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+    },
+    downloadText: {
+        marginLeft: 8,
+        fontSize: 14,
+        color: '#007AFF',
+    },
+    downloadButton: {
+        backgroundColor: '#007AFF',
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    downloadButtonText: {
+        color: '#FFF',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    fallbackNote: {
+        fontSize: 12,
+        color: '#999',
+        textAlign: 'center',
+        marginTop: 8,
+        fontStyle: 'italic',
+    },
+    modelButtonsColumn: {
+        flexDirection: 'column',
+        gap: 10,
+    },
+    initializeButton: {
+        backgroundColor: '#4CAF50',
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    redownloadButton: {
+        backgroundColor: '#2196F3',
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
     },
 });
