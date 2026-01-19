@@ -16,7 +16,10 @@ import {
     clearCache,
     getLabelColor,
     getLabelEmoji,
+    downloadModel,
+    initialize as initializeSentiment,
 } from '@local-intelligence/sentiment';
+import { getModelStatus as getCoreModelStatus } from '@local-intelligence/core';
 import type { SentimentStats } from '@local-intelligence/sentiment';
 
 const SAMPLE_TEXTS = [
@@ -31,6 +34,10 @@ const SAMPLE_TEXTS = [
 export function SentimentDemoScreen() {
     const [inputText, setInputText] = useState(SAMPLE_TEXTS[0]);
     const [stats, setStats] = useState<SentimentStats | null>(null);
+    const [isModelDownloaded, setIsModelDownloaded] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [downloadProgress, setDownloadProgress] = useState(0);
+    const [isInitializingModel, setIsInitializingModel] = useState(false);
 
     // Using the useSentiment hook - the recommended way to integrate sentiment analysis
     const {
@@ -49,6 +56,57 @@ export function SentimentDemoScreen() {
             maxCacheSize: 100,
         },
     });
+
+    // Check model status when initialized
+    React.useEffect(() => {
+        if (isInitialized) {
+            checkModelStatus();
+        }
+    }, [isInitialized]);
+
+    const checkModelStatus = async () => {
+        try {
+            // Use Core module's getModelStatus which correctly reports download state
+            const status = await getCoreModelStatus('distilbert-sst2');
+            setIsModelDownloaded(status.state === 'ready');
+        } catch {
+            // Model status check failed, ignore
+        }
+    };
+
+    const handleDownloadModel = async () => {
+        setIsDownloading(true);
+        setDownloadProgress(0);
+        try {
+            await downloadModel((progress) => {
+                setDownloadProgress(progress);
+            });
+            await checkModelStatus();
+            Alert.alert('Success', 'Sentiment model downloaded successfully!');
+        } catch (err) {
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to download model');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
+    const handleInitializeModel = async () => {
+        setIsInitializingModel(true);
+        try {
+            await initializeSentiment({
+                minConfidence: 0.5,
+                defaultLabel: 'neutral',
+                enableCaching: true,
+                maxCacheSize: 100,
+            });
+            await checkModelStatus();
+            Alert.alert('Success', 'Sentiment model initialized successfully!');
+        } catch (err) {
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to initialize model');
+        } finally {
+            setIsInitializingModel(false);
+        }
+    };
 
     const handleAnalyze = async () => {
         if (!inputText.trim()) {
@@ -96,7 +154,7 @@ export function SentimentDemoScreen() {
             <View style={styles.header}>
                 <Text style={styles.title}>Sentiment Analysis</Text>
                 <Text style={styles.subtitle}>
-                    On-device 3-class classification with NLTagger (iOS) / Lexicon (Android)
+                    On-device 3-class classification with DistilBERT ONNX model
                 </Text>
             </View>
 
@@ -115,6 +173,76 @@ export function SentimentDemoScreen() {
                         </Text>
                     </View>
                 </View>
+                <View style={styles.statusRow}>
+                    <Text style={styles.statusLabel}>ONNX Model:</Text>
+                    <View
+                        style={[
+                            styles.statusBadge,
+                            { backgroundColor: isModelDownloaded ? '#4CAF50' : '#FF9800' },
+                        ]}
+                    >
+                        <Text style={styles.statusBadgeText}>
+                            {isModelDownloaded ? 'Downloaded' : 'Not Downloaded'}
+                        </Text>
+                    </View>
+                </View>
+                {isInitialized && (
+                    <View style={styles.downloadSection}>
+                        {isDownloading ? (
+                            <View style={styles.downloadProgress}>
+                                <ActivityIndicator size="small" color="#9C27B0" />
+                                <Text style={styles.downloadText}>
+                                    Downloading... {downloadProgress.toFixed(0)}%
+                                </Text>
+                            </View>
+                        ) : isInitializingModel ? (
+                            <View style={styles.downloadProgress}>
+                                <ActivityIndicator size="small" color="#4CAF50" />
+                                <Text style={[styles.downloadText, { color: '#4CAF50' }]}>
+                                    Initializing model...
+                                </Text>
+                            </View>
+                        ) : (
+                            <View style={styles.modelButtonsColumn}>
+                                {!isModelDownloaded && (
+                                    <TouchableOpacity
+                                        style={styles.downloadButton}
+                                        onPress={handleDownloadModel}
+                                    >
+                                        <Text style={styles.downloadButtonText}>
+                                            Download Model (~50MB)
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+                                {isModelDownloaded && (
+                                    <>
+                                        <TouchableOpacity
+                                            style={styles.initializeButton}
+                                            onPress={handleInitializeModel}
+                                        >
+                                            <Text style={styles.downloadButtonText}>
+                                                Initialize Model
+                                            </Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={styles.redownloadButton}
+                                            onPress={handleDownloadModel}
+                                        >
+                                            <Text style={styles.downloadButtonText}>
+                                                Re-download Model
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </>
+                                )}
+                            </View>
+                        )}
+                        {!isModelDownloaded && (
+                            <Text style={styles.fallbackNote}>
+                                Currently using NLTagger (iOS) / Lexicon (Android) fallback
+                            </Text>
+                        )}
+                    </View>
+                )}
             </View>
 
             {/* Sample Texts */}
@@ -611,5 +739,56 @@ const styles = StyleSheet.create({
     },
     footer: {
         height: 40,
+    },
+    downloadSection: {
+        marginTop: 12,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: '#EEE',
+    },
+    downloadProgress: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+    },
+    downloadText: {
+        marginLeft: 8,
+        fontSize: 14,
+        color: '#9C27B0',
+    },
+    downloadButton: {
+        backgroundColor: '#9C27B0',
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    downloadButtonText: {
+        color: '#FFF',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    fallbackNote: {
+        fontSize: 12,
+        color: '#999',
+        textAlign: 'center',
+        marginTop: 8,
+        fontStyle: 'italic',
+    },
+    modelButtonsColumn: {
+        flexDirection: 'column',
+        gap: 10,
+    },
+    initializeButton: {
+        backgroundColor: '#4CAF50',
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    redownloadButton: {
+        backgroundColor: '#9C27B0',
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
     },
 });
