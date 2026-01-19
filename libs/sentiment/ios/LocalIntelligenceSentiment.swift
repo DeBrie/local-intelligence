@@ -316,7 +316,12 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
             // Get logits data
             let logitsData = try logitsValue.tensorData() as Data
             var logits = [Float](repeating: 0, count: 2)
-            logitsData.copyBytes(to: &logits, count: 2 * MemoryLayout<Float>.size)
+            logitsData.withUnsafeBytes { rawBuffer in
+                let floatBuffer = rawBuffer.bindMemory(to: Float.self)
+                for i in 0..<min(2, floatBuffer.count) {
+                    logits[i] = floatBuffer[i]
+                }
+            }
             
             // Apply softmax
             let probs = softmax(logits)
