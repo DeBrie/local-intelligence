@@ -82,9 +82,12 @@ export async function initialize(config: PIIConfig = {}): Promise<boolean> {
       ML_REQUIRED_TYPES.includes(type),
     );
     if (needsMLModel) {
-      // Trigger model download in background if not already available
-      triggerModelDownloadIfNeeded().catch(() => {
-        // Silently fail - user will get MODEL_NOT_READY error when trying to detect
+      // Try to load the model if already downloaded, otherwise trigger download
+      await loadModelIfDownloaded().catch(() => {
+        // Model not downloaded yet - trigger download in background
+        triggerModelDownloadIfNeeded().catch(() => {
+          // Silently fail - user will get MODEL_NOT_READY error when trying to detect
+        });
       });
     }
   }
@@ -137,6 +140,51 @@ async function triggerModelDownloadIfNeeded(): Promise<void> {
     }
   } catch {
     // Silently fail
+  }
+}
+
+/**
+ * Loads the model if it's already downloaded.
+ * This is called during initialize to ensure the ONNX model is loaded.
+ */
+async function loadModelIfDownloaded(): Promise<void> {
+  const CoreModule = NativeModules.LocalIntelligenceCore;
+  if (!CoreModule) {
+    throw new Error('Core module not available');
+  }
+
+  const statusJson = await CoreModule.getModelStatus(PII_MODEL_ID);
+  const status = JSON.parse(statusJson);
+
+  if (status.state === 'ready' && status.path) {
+    // Model is downloaded, notify native module to load it
+    if (LocalIntelligencePIIModule.notifyModelDownloaded) {
+      LocalIntelligencePIIModule.notifyModelDownloaded(
+        PII_MODEL_ID,
+        status.path,
+      );
+    }
+
+    // Wait for the model to be loaded (poll with timeout)
+    const maxWaitMs = 10000; // 10 seconds max
+    const pollIntervalMs = 100;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      const modelStatusJson = await LocalIntelligencePIIModule.getModelStatus();
+      const modelStatus = JSON.parse(modelStatusJson);
+      if (modelStatus.isModelReady) {
+        return; // Model loaded successfully
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+
+    // Timeout - model didn't load in time, but don't throw - it may still load
+    console.warn(
+      'PII model loading timed out, but may still be loading in background',
+    );
+  } else {
+    throw new Error('Model not downloaded');
   }
 }
 
@@ -265,6 +313,69 @@ export function onRedaction(callback: PIIEventCallback): () => void {
 
 export function isReady(): boolean {
   return isInitialized;
+}
+
+/**
+ * Get the current model status for the PII BERT model.
+ */
+export async function getModelStatus(): Promise<{
+  status: 'not_ready' | 'downloading' | 'ready';
+  modelId: string;
+  isModelReady: boolean;
+}> {
+  const resultJson = await LocalIntelligencePIIModule.getModelStatus();
+  return JSON.parse(resultJson);
+}
+
+/**
+ * Manually trigger download of the PII model.
+ * Returns the model path if successful.
+ */
+export async function downloadModel(
+  onProgress?: (progress: number) => void,
+): Promise<string> {
+  const CoreModule = NativeModules.LocalIntelligenceCore;
+  if (!CoreModule) {
+    throw new Error('Core module not available');
+  }
+
+  // Ensure Core module is initialized
+  try {
+    await CoreModule.initialize(JSON.stringify({}));
+  } catch {
+    // Already initialized or failed - continue anyway
+  }
+
+  let subscription: { remove: () => void } | null = null;
+
+  if (onProgress) {
+    const coreEmitter = new NativeEventEmitter(CoreModule);
+    subscription = coreEmitter.addListener(
+      'LocalIntelligenceDownloadProgress',
+      (event: { modelId: string; progress: number }) => {
+        if (event.modelId === PII_MODEL_ID) {
+          onProgress(event.progress * 100);
+        }
+      },
+    );
+  }
+
+  try {
+    const resultJson = await CoreModule.downloadModel(PII_MODEL_ID);
+    const result = JSON.parse(resultJson);
+
+    // Notify the PII module that the model is ready
+    if (LocalIntelligencePIIModule.notifyModelDownloaded) {
+      LocalIntelligencePIIModule.notifyModelDownloaded(
+        PII_MODEL_ID,
+        result.path,
+      );
+    }
+
+    return result.path;
+  } finally {
+    subscription?.remove();
+  }
 }
 
 export function getConfig(): PIIConfig {

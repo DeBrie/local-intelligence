@@ -10,6 +10,8 @@ export {
   onRedaction,
   isReady,
   getConfig,
+  getModelStatus,
+  downloadModel,
 } from './LocalIntelligencePII';
 
 export {
