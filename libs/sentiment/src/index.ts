@@ -12,6 +12,8 @@ export {
   getLabelColor,
   getModelStatus,
   downloadModel,
+  waitForModel,
+  destroy,
 } from './LocalIntelligenceSentiment';
 
 export { useSentiment } from './useSentiment';

@@ -28,22 +28,43 @@ const LocalIntelligenceSentimentModule = NativeModule
 
 const SENTIMENT_MODEL_ID = 'distilbert-sst2';
 
-let eventEmitter: NativeEventEmitter | null = null;
-let isInitialized = false;
-let currentConfig: SentimentConfig = {};
-let modelDownloadSubscription: { remove: () => void } | null = null;
+// Encapsulated state management
+class SentimentState {
+  eventEmitter: NativeEventEmitter | null = null;
+  isInitialized = false;
+  currentConfig: SentimentConfig = {};
+  modelDownloadSubscription: { remove: () => void } | null = null;
+  modelReadySubscription: { remove: () => void } | null = null;
+
+  reset(): void {
+    this.cleanup();
+    this.isInitialized = false;
+    this.currentConfig = {};
+  }
+
+  cleanup(): void {
+    this.modelDownloadSubscription?.remove();
+    this.modelDownloadSubscription = null;
+    this.modelReadySubscription?.remove();
+    this.modelReadySubscription = null;
+  }
+}
+
+const state = new SentimentState();
 
 function getEventEmitter(): NativeEventEmitter {
-  if (!eventEmitter) {
-    eventEmitter = new NativeEventEmitter(LocalIntelligenceSentimentModule);
+  if (!state.eventEmitter) {
+    state.eventEmitter = new NativeEventEmitter(
+      LocalIntelligenceSentimentModule,
+    );
   }
-  return eventEmitter;
+  return state.eventEmitter;
 }
 
 export async function initialize(
   config: SentimentConfig = {},
 ): Promise<boolean> {
-  if (isInitialized) {
+  if (state.isInitialized) {
     return true;
   }
 
@@ -58,14 +79,8 @@ export async function initialize(
     JSON.stringify(nativeConfig),
   );
   if (result) {
-    isInitialized = true;
-    currentConfig = config;
-
-    // Subscribe to model download events and trigger download if needed
-    subscribeToModelDownloads();
-    triggerModelDownloadIfNeeded().catch(() => {
-      // Silently fail - sentiment will use fallback (NLTagger/lexicon)
-    });
+    state.isInitialized = true;
+    state.currentConfig = config;
   }
   return result;
 }
@@ -133,92 +148,42 @@ export async function downloadModel(
   }
 }
 
-function subscribeToModelDownloads(): void {
-  if (modelDownloadSubscription) {
+/**
+ * Wait for the model to be ready using event-based approach.
+ * Returns a promise that resolves when the model is loaded.
+ * @param timeoutMs Maximum time to wait (default 30 seconds)
+ */
+export async function waitForModel(timeoutMs = 30000): Promise<void> {
+  const status = await getModelStatus();
+  if (status.isModelReady) {
     return;
   }
 
-  try {
-    const CoreModule = NativeModules.LocalIntelligenceCore;
-    if (CoreModule) {
-      const coreEmitter = new NativeEventEmitter(CoreModule);
-      modelDownloadSubscription = coreEmitter.addListener(
-        'LocalIntelligenceModelDownloaded',
-        (event: { modelId: string; path: string }) => {
-          if (event.modelId === SENTIMENT_MODEL_ID) {
-            LocalIntelligenceSentimentModule.notifyModelDownloaded?.(
-              event.modelId,
-              event.path,
-            );
-          }
-        },
-      );
-    }
-  } catch {
-    // Core module not available, skip subscription
-  }
-}
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      state.modelReadySubscription?.remove();
+      state.modelReadySubscription = null;
+      reject(new Error(`Model loading timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
 
-async function triggerModelDownloadIfNeeded(): Promise<void> {
-  try {
-    const CoreModule = NativeModules.LocalIntelligenceCore;
-    if (!CoreModule) return;
-
-    const statusJson = await CoreModule.getModelStatus(SENTIMENT_MODEL_ID);
-    const status = JSON.parse(statusJson);
-
-    if (status.state === 'ready') {
-      // Model already downloaded, notify sentiment module to load it
-      LocalIntelligenceSentimentModule.notifyModelDownloaded?.(
-        SENTIMENT_MODEL_ID,
-        status.path,
-      );
-
-      // Wait for the model to be loaded (poll with timeout)
-      const maxWaitMs = 10000; // 10 seconds max
-      const pollIntervalMs = 100;
-      const startTime = Date.now();
-
-      while (Date.now() - startTime < maxWaitMs) {
-        const modelStatusJson =
-          await LocalIntelligenceSentimentModule.getModelStatus();
-        const modelStatus = JSON.parse(modelStatusJson);
-        if (modelStatus.isModelReady) {
-          return; // Model loaded successfully
-        }
-        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-      }
-
-      // Timeout - model didn't load in time, but don't throw - it may still load
-      console.warn(
-        'Sentiment model loading timed out, but may still be loading in background',
-      );
-    } else if (status.state === 'not_downloaded') {
-      // Start download in background
-      CoreModule.downloadModel(SENTIMENT_MODEL_ID)
-        .then((resultJson: string) => {
-          const result = JSON.parse(resultJson);
-          LocalIntelligenceSentimentModule.notifyModelDownloaded?.(
-            SENTIMENT_MODEL_ID,
-            result.path,
-          );
-        })
-        .catch(() => {
-          // Silently fail - user can manually trigger download
-        });
-    }
-  } catch {
-    // Silently fail
-  }
+    const emitter = getEventEmitter();
+    state.modelReadySubscription = emitter.addListener('onModelReady', () => {
+      clearTimeout(timeout);
+      state.modelReadySubscription?.remove();
+      state.modelReadySubscription = null;
+      resolve();
+    });
+  });
 }
 
 export async function analyze(text: string): Promise<SentimentResult> {
-  if (!isInitialized) {
+  if (!state.isInitialized) {
     throw new Error(
       '@local-intelligence/sentiment is not initialized. Call initialize() first.',
     );
   }
 
+  // The native module will throw if model is not ready - no silent fallback
   const resultJson = await LocalIntelligenceSentimentModule.analyze(text);
   return JSON.parse(resultJson) as SentimentResult;
 }
@@ -226,18 +191,19 @@ export async function analyze(text: string): Promise<SentimentResult> {
 export async function analyzeBatch(
   texts: string[],
 ): Promise<BatchSentimentResult> {
-  if (!isInitialized) {
+  if (!state.isInitialized) {
     throw new Error(
       '@local-intelligence/sentiment is not initialized. Call initialize() first.',
     );
   }
 
+  // The native module will throw if model is not ready - no silent fallback
   const resultJson = await LocalIntelligenceSentimentModule.analyzeBatch(texts);
   return JSON.parse(resultJson) as BatchSentimentResult;
 }
 
 export async function getStats(): Promise<SentimentStats> {
-  if (!isInitialized) {
+  if (!state.isInitialized) {
     throw new Error(
       '@local-intelligence/sentiment is not initialized. Call initialize() first.',
     );
@@ -248,7 +214,7 @@ export async function getStats(): Promise<SentimentStats> {
 }
 
 export async function resetStats(): Promise<boolean> {
-  if (!isInitialized) {
+  if (!state.isInitialized) {
     throw new Error(
       '@local-intelligence/sentiment is not initialized. Call initialize() first.',
     );
@@ -258,13 +224,21 @@ export async function resetStats(): Promise<boolean> {
 }
 
 export async function clearCache(): Promise<boolean> {
-  if (!isInitialized) {
+  if (!state.isInitialized) {
     throw new Error(
       '@local-intelligence/sentiment is not initialized. Call initialize() first.',
     );
   }
 
   return LocalIntelligenceSentimentModule.clearCache();
+}
+
+/**
+ * Clean up all subscriptions and reset state.
+ * Call this when unmounting or when you want to reinitialize.
+ */
+export function destroy(): void {
+  state.reset();
 }
 
 export type SentimentEventCallback = (result: SentimentResult) => void;
@@ -279,11 +253,11 @@ export function onAnalysis(callback: SentimentEventCallback): () => void {
 }
 
 export function isReady(): boolean {
-  return isInitialized;
+  return state.isInitialized;
 }
 
 export function getConfig(): SentimentConfig {
-  return { ...currentConfig };
+  return { ...state.currentConfig };
 }
 
 export function getLabelEmoji(label: SentimentLabel): string {
