@@ -17,7 +17,9 @@ import {
     getLabelColor,
     getLabelEmoji,
     downloadModel,
-    initialize as initializeSentiment,
+    waitForModel,
+    destroy,
+    getModelStatus,
 } from '@local-intelligence/sentiment';
 import { getModelStatus as getCoreModelStatus } from '@local-intelligence/core';
 import type { SentimentStats } from '@local-intelligence/sentiment';
@@ -35,9 +37,10 @@ export function SentimentDemoScreen() {
     const [inputText, setInputText] = useState(SAMPLE_TEXTS[0]);
     const [stats, setStats] = useState<SentimentStats | null>(null);
     const [isModelDownloaded, setIsModelDownloaded] = useState(false);
+    const [isModelReady, setIsModelReady] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState(0);
-    const [isInitializingModel, setIsInitializingModel] = useState(false);
+    const [isLoadingModel, setIsLoadingModel] = useState(false);
 
     // Using the useSentiment hook - the recommended way to integrate sentiment analysis
     const {
@@ -64,11 +67,22 @@ export function SentimentDemoScreen() {
         }
     }, [isInitialized]);
 
+    // Cleanup on unmount
+    React.useEffect(() => {
+        return () => {
+            destroy();
+        };
+    }, []);
+
     const checkModelStatus = async () => {
         try {
-            // Use Core module's getModelStatus which correctly reports download state
-            const status = await getCoreModelStatus('distilbert-sst2');
-            setIsModelDownloaded(status.state === 'ready');
+            // Check if model is downloaded via Core module
+            const coreStatus = await getCoreModelStatus('distilbert-sst2');
+            setIsModelDownloaded(coreStatus.state === 'ready');
+
+            // Check if model is loaded and ready for inference
+            const sentimentStatus = await getModelStatus();
+            setIsModelReady(sentimentStatus.isModelReady);
         } catch {
             // Model status check failed, ignore
         }
@@ -81,8 +95,10 @@ export function SentimentDemoScreen() {
             await downloadModel((progress) => {
                 setDownloadProgress(progress);
             });
-            await checkModelStatus();
-            Alert.alert('Success', 'Sentiment model downloaded successfully!');
+            setIsModelDownloaded(true);
+            Alert.alert('Success', 'Sentiment model downloaded. Now loading model...');
+            // Automatically load the model after download
+            await handleLoadModel();
         } catch (err) {
             Alert.alert('Error', err instanceof Error ? err.message : 'Failed to download model');
         } finally {
@@ -90,27 +106,26 @@ export function SentimentDemoScreen() {
         }
     };
 
-    const handleInitializeModel = async () => {
-        setIsInitializingModel(true);
+    const handleLoadModel = async () => {
+        setIsLoadingModel(true);
         try {
-            await initializeSentiment({
-                minConfidence: 0.5,
-                defaultLabel: 'neutral',
-                enableCaching: true,
-                maxCacheSize: 100,
-            });
-            await checkModelStatus();
-            Alert.alert('Success', 'Sentiment model initialized successfully!');
+            await waitForModel(30000); // Wait up to 30 seconds
+            setIsModelReady(true);
+            Alert.alert('Success', 'Sentiment model loaded and ready!');
         } catch (err) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to initialize model');
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to load model');
         } finally {
-            setIsInitializingModel(false);
+            setIsLoadingModel(false);
         }
     };
 
     const handleAnalyze = async () => {
         if (!inputText.trim()) {
             Alert.alert('Error', 'Please enter some text to analyze');
+            return;
+        }
+        if (!isModelReady) {
+            Alert.alert('Error', 'Model not ready. Please download and load the model first.');
             return;
         }
         await analyze(inputText);
@@ -186,6 +201,19 @@ export function SentimentDemoScreen() {
                         </Text>
                     </View>
                 </View>
+                <View style={[styles.statusRow, { marginTop: 8 }]}>
+                    <Text style={styles.statusLabel}>Model Ready:</Text>
+                    <View
+                        style={[
+                            styles.statusBadge,
+                            { backgroundColor: isModelReady ? '#4CAF50' : '#F44336' },
+                        ]}
+                    >
+                        <Text style={styles.statusBadgeText}>
+                            {isModelReady ? 'Ready' : 'Not Loaded'}
+                        </Text>
+                    </View>
+                </View>
                 {isInitialized && (
                     <View style={styles.downloadSection}>
                         {isDownloading ? (
@@ -195,11 +223,11 @@ export function SentimentDemoScreen() {
                                     Downloading... {downloadProgress.toFixed(0)}%
                                 </Text>
                             </View>
-                        ) : isInitializingModel ? (
+                        ) : isLoadingModel ? (
                             <View style={styles.downloadProgress}>
                                 <ActivityIndicator size="small" color="#4CAF50" />
                                 <Text style={[styles.downloadText, { color: '#4CAF50' }]}>
-                                    Initializing model...
+                                    Loading model...
                                 </Text>
                             </View>
                         ) : (
@@ -214,31 +242,31 @@ export function SentimentDemoScreen() {
                                         </Text>
                                     </TouchableOpacity>
                                 )}
+                                {isModelDownloaded && !isModelReady && (
+                                    <TouchableOpacity
+                                        style={styles.initializeButton}
+                                        onPress={handleLoadModel}
+                                    >
+                                        <Text style={styles.downloadButtonText}>
+                                            Load Model
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
                                 {isModelDownloaded && (
-                                    <>
-                                        <TouchableOpacity
-                                            style={styles.initializeButton}
-                                            onPress={handleInitializeModel}
-                                        >
-                                            <Text style={styles.downloadButtonText}>
-                                                Initialize Model
-                                            </Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={styles.redownloadButton}
-                                            onPress={handleDownloadModel}
-                                        >
-                                            <Text style={styles.downloadButtonText}>
-                                                Re-download Model
-                                            </Text>
-                                        </TouchableOpacity>
-                                    </>
+                                    <TouchableOpacity
+                                        style={styles.redownloadButton}
+                                        onPress={handleDownloadModel}
+                                    >
+                                        <Text style={styles.downloadButtonText}>
+                                            Re-download Model
+                                        </Text>
+                                    </TouchableOpacity>
                                 )}
                             </View>
                         )}
-                        {!isModelDownloaded && (
-                            <Text style={styles.fallbackNote}>
-                                Currently using NLTagger (iOS) / Lexicon (Android) fallback
+                        {!isModelReady && (
+                            <Text style={styles.modelRequiredNote}>
+                                Model must be downloaded and loaded before analysis
                             </Text>
                         )}
                     </View>
@@ -278,9 +306,9 @@ export function SentimentDemoScreen() {
             {/* Analyze Button */}
             <View style={styles.buttonContainer}>
                 <TouchableOpacity
-                    style={[styles.button, styles.analyzeButton]}
+                    style={[styles.button, styles.analyzeButton, (!isModelReady || isLoading) && styles.buttonDisabled]}
                     onPress={handleAnalyze}
-                    disabled={!isInitialized || isLoading}
+                    disabled={!isInitialized || !isModelReady || isLoading}
                 >
                     <Text style={styles.buttonText}>Analyze Sentiment</Text>
                 </TouchableOpacity>
@@ -768,12 +796,15 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
     },
-    fallbackNote: {
+    modelRequiredNote: {
         fontSize: 12,
-        color: '#999',
+        color: '#F44336',
         textAlign: 'center',
         marginTop: 8,
-        fontStyle: 'italic',
+        fontWeight: '500',
+    },
+    buttonDisabled: {
+        opacity: 0.5,
     },
     modelButtonsColumn: {
         flexDirection: 'column',
