@@ -45,13 +45,13 @@ On-device AI for React Native — privacy-first, hardware-accelerated machine le
 
 ## Packages
 
-| Package                               | Description                                                    | Size    | Model Size | Status     |
-| ------------------------------------- | -------------------------------------------------------------- | ------- | ---------- | ---------- |
-| `@local-intelligence/core`            | Native engine, model management, hardware detection            | 9.1 kB  | -          | ✅ MVP     |
-| `@local-intelligence/pii`             | PII detection with NLTagger+BERT (iOS) / BERT-ONNX (Android)   | 11.1 kB | ~38 MB     | ✅ MVP     |
-| `@local-intelligence/sentiment`       | Sentiment analysis: NLTagger (iOS) / DistilBERT-SST2 (Android) | 9.2 kB  | ~67 MB     | ✅ MVP     |
-| `@local-intelligence/semantic-search` | Text embeddings: NLEmbedding (iOS) / MiniLM TFLite (Android)   | 10.5 kB | ~45 MB     | ✅ MVP     |
-| `@local-intelligence/chat`            | On-device LLM (Foundation Models / ExecuTorch)                 | -       | -          | 🚧 Planned |
+| Package                               | Description                                                   | Size    | Model Size | Status     |
+| ------------------------------------- | ------------------------------------------------------------- | ------- | ---------- | ---------- |
+| `@local-intelligence/core`            | Native engine, model management, hardware detection           | 9.1 kB  | -          | ✅ MVP     |
+| `@local-intelligence/pii`             | PII detection with NLTagger+BERT (iOS) / BERT-ONNX (Android)  | 11.1 kB | ~38 MB     | ✅ MVP     |
+| `@local-intelligence/sentiment`       | Sentiment analysis with DistilBERT-SST2 ONNX (both platforms) | 9.2 kB  | ~67 MB     | ✅ MVP     |
+| `@local-intelligence/semantic-search` | Text embeddings: NLEmbedding (iOS) / MiniLM TFLite (Android)  | 10.5 kB | ~45 MB     | ✅ MVP     |
+| `@local-intelligence/chat`            | On-device LLM (Foundation Models / ExecuTorch)                | -       | -          | 🚧 Planned |
 
 > **Zero runtime JS dependencies** — all packages rely solely on React Native's native runtime and platform ML frameworks. Models are downloaded on-demand from our CDN (`cdn.localintelligence.dev`).
 
