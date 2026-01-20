@@ -24,6 +24,8 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
         const val NAME = "LocalIntelligenceSentiment"
         const val MODEL_ID = "distilbert-sst2"
         const val MEMORY_PRESSURE_IDLE_THRESHOLD_MS = 30_000L
+        const val MAX_TEXT_LENGTH = 10000 // Characters
+        const val MAX_BATCH_SIZE = 100
         
         // DistilBERT-SST2 labels: 0 = negative, 1 = positive
         val SENTIMENT_LABELS = listOf("negative", "positive")
@@ -81,33 +83,6 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
             isModelReady = false
         }
     }
-
-    private val positiveWords = setOf(
-        "good", "great", "excellent", "amazing", "wonderful", "fantastic", "awesome",
-        "love", "like", "happy", "joy", "pleased", "delighted", "satisfied", "perfect",
-        "beautiful", "brilliant", "superb", "outstanding", "magnificent", "terrific",
-        "best", "better", "nice", "fine", "positive", "success", "successful", "win",
-        "enjoy", "enjoyed", "enjoying", "thank", "thanks", "grateful", "appreciate"
-    )
-
-    private val negativeWords = setOf(
-        "bad", "terrible", "awful", "horrible", "poor", "worst", "hate", "dislike",
-        "sad", "angry", "upset", "disappointed", "frustrated", "annoyed", "unhappy",
-        "fail", "failed", "failure", "wrong", "problem", "issue", "error", "mistake",
-        "ugly", "disgusting", "pathetic", "useless", "waste", "boring", "stupid",
-        "never", "nothing", "nobody", "nowhere", "neither", "cannot", "can't", "won't"
-    )
-
-    private val intensifiers = setOf(
-        "very", "really", "extremely", "absolutely", "completely", "totally", "highly",
-        "incredibly", "remarkably", "exceptionally", "particularly", "especially"
-    )
-
-    private val negators = setOf(
-        "not", "no", "never", "neither", "nobody", "nothing", "nowhere",
-        "hardly", "barely", "scarcely", "don't", "doesn't", "didn't", "won't",
-        "wouldn't", "couldn't", "shouldn't", "isn't", "aren't", "wasn't", "weren't"
-    )
 
     data class SentimentConfig(
         var minConfidence: Double = 0.5,
@@ -187,6 +162,17 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
             promise.reject("NOT_INITIALIZED", "Sentiment module not initialized")
             return
         }
+        
+        // Input validation
+        if (text.isBlank()) {
+            promise.reject("INVALID_INPUT", "Text cannot be empty")
+            return
+        }
+        
+        if (text.length > MAX_TEXT_LENGTH) {
+            promise.reject("INVALID_INPUT", "Text exceeds maximum length of $MAX_TEXT_LENGTH characters")
+            return
+        }
 
         scope.launch {
             try {
@@ -234,6 +220,29 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
         if (!isInitialized) {
             promise.reject("NOT_INITIALIZED", "Sentiment module not initialized")
             return
+        }
+        
+        // Input validation
+        if (texts.size() == 0) {
+            promise.reject("INVALID_INPUT", "Batch cannot be empty")
+            return
+        }
+        
+        if (texts.size() > MAX_BATCH_SIZE) {
+            promise.reject("INVALID_INPUT", "Batch exceeds maximum size of $MAX_BATCH_SIZE items")
+            return
+        }
+        
+        for (i in 0 until texts.size()) {
+            val text = texts.getString(i) ?: ""
+            if (text.isBlank()) {
+                promise.reject("INVALID_INPUT", "Text at index $i cannot be empty")
+                return
+            }
+            if (text.length > MAX_TEXT_LENGTH) {
+                promise.reject("INVALID_INPUT", "Text at index $i exceeds maximum length of $MAX_TEXT_LENGTH characters")
+                return
+            }
         }
 
         scope.launch {
@@ -315,13 +324,11 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
     private fun analyzeSentiment(text: String, startTime: Long): SentimentResult {
         lastAccessTimeMs = System.currentTimeMillis()
         
-        // Use ONNX model if available
-        if (isModelReady) {
-            return analyzeWithONNX(text, startTime)
+        if (!isModelReady) {
+            throw IllegalStateException("Model not loaded. Call downloadModel() and wait for it to complete before analyzing.")
         }
         
-        // Fallback to rule-based analysis
-        return analyzeWithRules(text, startTime)
+        return analyzeWithONNX(text, startTime)
     }
     
     private fun analyzeWithONNX(text: String, startTime: Long): SentimentResult {
@@ -330,9 +337,9 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
         val tok: WordPieceTokenizer
         
         synchronized(modelLock) {
-            session = ortSession ?: return analyzeWithRules(text, startTime)
-            env = ortEnvironment ?: return analyzeWithRules(text, startTime)
-            tok = tokenizer ?: return analyzeWithRules(text, startTime)
+            session = ortSession ?: throw IllegalStateException("ONNX session not initialized")
+            env = ortEnvironment ?: throw IllegalStateException("ONNX environment not initialized")
+            tok = tokenizer ?: throw IllegalStateException("Tokenizer not initialized")
         }
         
         try {
@@ -392,8 +399,7 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
                 processingTimeMs = processingTime
             )
         } catch (e: Exception) {
-            // Fallback to rules on error
-            return analyzeWithRules(text, startTime)
+            throw IllegalStateException("ONNX inference failed: ${e.message}", e)
         }
     }
     
@@ -404,105 +410,6 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
         return expValues.map { it / sumExp }.toFloatArray()
     }
     
-    private fun analyzeWithRules(text: String, startTime: Long): SentimentResult {
-        val words = text.lowercase().split(Regex("[\\s,.!?;:\"'()\\[\\]{}]+"))
-            .filter { it.isNotBlank() }
-        
-        var positiveScore = 0.0
-        var negativeScore = 0.0
-        var isNegated = false
-        var intensifierMultiplier = 1.0
-        
-        for (i in words.indices) {
-            val word = words[i]
-            
-            // Check for negators
-            if (negators.contains(word)) {
-                isNegated = true
-                continue
-            }
-            
-            // Check for intensifiers
-            if (intensifiers.contains(word)) {
-                intensifierMultiplier = 1.5
-                continue
-            }
-            
-            // Score positive words
-            if (positiveWords.contains(word)) {
-                val score = 1.0 * intensifierMultiplier
-                if (isNegated) {
-                    negativeScore += score
-                } else {
-                    positiveScore += score
-                }
-                isNegated = false
-                intensifierMultiplier = 1.0
-            }
-            
-            // Score negative words
-            if (negativeWords.contains(word)) {
-                val score = 1.0 * intensifierMultiplier
-                if (isNegated) {
-                    positiveScore += score * 0.5 // Negated negative is weakly positive
-                } else {
-                    negativeScore += score
-                }
-                isNegated = false
-                intensifierMultiplier = 1.0
-            }
-        }
-        
-        // Normalize scores
-        val total = positiveScore + negativeScore
-        val normalizedPositive: Double
-        val normalizedNegative: Double
-        val normalizedNeutral: Double
-        
-        if (total > 0) {
-            normalizedPositive = positiveScore / (total + 1)
-            normalizedNegative = negativeScore / (total + 1)
-            normalizedNeutral = 1.0 / (total + 1)
-        } else {
-            normalizedPositive = 0.0
-            normalizedNegative = 0.0
-            normalizedNeutral = 1.0
-        }
-        
-        // Determine label and confidence
-        val label: String
-        val confidence: Double
-        
-        when {
-            normalizedPositive > normalizedNegative && normalizedPositive > normalizedNeutral -> {
-                label = "positive"
-                confidence = normalizedPositive
-            }
-            normalizedNegative > normalizedPositive && normalizedNegative > normalizedNeutral -> {
-                label = "negative"
-                confidence = normalizedNegative
-            }
-            else -> {
-                label = "neutral"
-                confidence = normalizedNeutral
-            }
-        }
-        
-        val processingTime = (System.currentTimeMillis() - startTime).toDouble()
-        
-        return SentimentResult(
-            text = text,
-            label = label,
-            confidence = confidence,
-            scores = SentimentResult.Scores(
-                positive = normalizedPositive,
-                negative = normalizedNegative,
-                neutral = normalizedNeutral
-            ),
-            processingTimeMs = processingTime
-        )
-    }
-
     private fun resultToJson(result: SentimentResult): JSONObject {
         return JSONObject().apply {
             put("text", result.text)
@@ -555,6 +462,12 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
                 ortSession = ortEnvironment?.createSession(modelPath)
                 
                 isModelReady = true
+                
+                // Emit model ready event
+                val params = Arguments.createMap().apply {
+                    putString("modelId", MODEL_ID)
+                }
+                sendEvent("onModelReady", params)
             } catch (e: Exception) {
                 ortSession = null
                 ortEnvironment = null

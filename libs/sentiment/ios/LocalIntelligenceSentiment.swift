@@ -9,11 +9,17 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
     
     private static let MODEL_ID = "distilbert-sst2"
     private static let SENTIMENT_LABELS = ["negative", "positive"]
+    private static let MAX_TEXT_LENGTH = 10000 // Characters
+    private static let MAX_BATCH_SIZE = 100
     
     private var isInitialized = false
     private var config = SentimentConfig()
     private var stats = SentimentStats()
     private var cache: [String: CachedResult] = [:]
+    
+    // Thread-safe access queues
+    private let statsQueue = DispatchQueue(label: "com.localintelligence.sentiment.stats", attributes: .concurrent)
+    private let cacheQueue = DispatchQueue(label: "com.localintelligence.sentiment.cache", attributes: .concurrent)
     
     // ONNX Runtime for DistilBERT-SST2 model
     private var ortSession: ORTSession?
@@ -104,7 +110,7 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
     }
     
     override func supportedEvents() -> [String]! {
-        return ["onSentimentAnalysis"]
+        return ["onSentimentAnalysis", "onModelReady"]
     }
     
     @objc(initialize:withResolver:withRejecter:)
@@ -141,46 +147,62 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
             return
         }
         
+        // Input validation
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            reject("INVALID_INPUT", "Text cannot be empty", nil)
+            return
+        }
+        
+        guard text.count <= LocalIntelligenceSentiment.MAX_TEXT_LENGTH else {
+            reject("INVALID_INPUT", "Text exceeds maximum length of \(LocalIntelligenceSentiment.MAX_TEXT_LENGTH) characters", nil)
+            return
+        }
+        
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             
-            // Check cache
-            if self.config.enableCaching, let cached = self.cache[text] {
-                do {
-                    let jsonData = try JSONEncoder().encode(cached.result)
-                    let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
-                    resolve(jsonString)
-                    return
-                } catch {
-                    // Continue with analysis if cache read fails
+            // Check cache (thread-safe read)
+            if self.config.enableCaching {
+                let cached = self.cacheQueue.sync { self.cache[text] }
+                if let cached = cached {
+                    do {
+                        let jsonData = try JSONEncoder().encode(cached.result)
+                        let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+                        resolve(jsonString)
+                        return
+                    } catch {
+                        // Continue with analysis if cache read fails
+                    }
                 }
             }
             
-            let startTime = CFAbsoluteTimeGetCurrent()
-            let result = self.analyzeSentiment(text: text, startTime: startTime)
-            
-            // Update stats
-            self.stats.totalAnalyzed += 1
-            self.stats.byLabel[result.label, default: 0] += 1
-            self.stats.totalConfidence += result.confidence
-            self.stats.totalProcessingTimeMs += result.processingTimeMs
-            
-            // Cache result
-            if self.config.enableCaching {
-                self.cacheResult(text: text, result: result)
-            }
-            
-            // Emit event
-            self.sendEvent(withName: "onSentimentAnalysis", body: [
-                "result": try? JSONEncoder().encode(result)
-            ])
-            
             do {
+                let startTime = CFAbsoluteTimeGetCurrent()
+                let result = try self.analyzeSentiment(text: text, startTime: startTime)
+                
+                // Update stats (thread-safe write)
+                self.statsQueue.async(flags: .barrier) {
+                    self.stats.totalAnalyzed += 1
+                    self.stats.byLabel[result.label, default: 0] += 1
+                    self.stats.totalConfidence += result.confidence
+                    self.stats.totalProcessingTimeMs += result.processingTimeMs
+                }
+                
+                // Cache result (thread-safe write)
+                if self.config.enableCaching {
+                    self.cacheResult(text: text, result: result)
+                }
+                
+                // Emit event
+                self.sendEvent(withName: "onSentimentAnalysis", body: [
+                    "result": try? JSONEncoder().encode(result)
+                ])
+                
                 let jsonData = try JSONEncoder().encode(result)
                 let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
                 resolve(jsonString)
             } catch {
-                reject("ENCODE_ERROR", "Failed to encode result", error)
+                reject("MODEL_NOT_READY", error.localizedDescription, error)
             }
         }
     }
@@ -192,6 +214,28 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
             return
         }
         
+        // Input validation
+        guard !texts.isEmpty else {
+            reject("INVALID_INPUT", "Batch cannot be empty", nil)
+            return
+        }
+        
+        guard texts.count <= LocalIntelligenceSentiment.MAX_BATCH_SIZE else {
+            reject("INVALID_INPUT", "Batch exceeds maximum size of \(LocalIntelligenceSentiment.MAX_BATCH_SIZE) items", nil)
+            return
+        }
+        
+        for (index, text) in texts.enumerated() {
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                reject("INVALID_INPUT", "Text at index \(index) cannot be empty", nil)
+                return
+            }
+            guard text.count <= LocalIntelligenceSentiment.MAX_TEXT_LENGTH else {
+                reject("INVALID_INPUT", "Text at index \(index) exceeds maximum length of \(LocalIntelligenceSentiment.MAX_TEXT_LENGTH) characters", nil)
+                return
+            }
+        }
+        
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             
@@ -200,16 +244,23 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
             var totalConfidence: Double = 0
             
             for text in texts {
-                let startTime = CFAbsoluteTimeGetCurrent()
-                let result = self.analyzeSentiment(text: text, startTime: startTime)
-                results.append(result)
-                totalConfidence += result.confidence
-                
-                // Update stats
-                self.stats.totalAnalyzed += 1
-                self.stats.byLabel[result.label, default: 0] += 1
-                self.stats.totalConfidence += result.confidence
-                self.stats.totalProcessingTimeMs += result.processingTimeMs
+                do {
+                    let startTime = CFAbsoluteTimeGetCurrent()
+                    let result = try self.analyzeSentiment(text: text, startTime: startTime)
+                    results.append(result)
+                    totalConfidence += result.confidence
+                    
+                    // Update stats (thread-safe write)
+                    self.statsQueue.async(flags: .barrier) {
+                        self.stats.totalAnalyzed += 1
+                        self.stats.byLabel[result.label, default: 0] += 1
+                        self.stats.totalConfidence += result.confidence
+                        self.stats.totalProcessingTimeMs += result.processingTimeMs
+                    }
+                } catch {
+                    reject("MODEL_NOT_READY", error.localizedDescription, error)
+                    return
+                }
             }
             
             let totalTime = (CFAbsoluteTimeGetCurrent() - batchStartTime) * 1000
@@ -233,12 +284,14 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
     
     @objc(getStats:withRejecter:)
     func getStats(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
-        let avgConfidence = stats.totalAnalyzed > 0 ? stats.totalConfidence / Double(stats.totalAnalyzed) : 0
-        let avgTime = stats.totalAnalyzed > 0 ? stats.totalProcessingTimeMs / Double(stats.totalAnalyzed) : 0
+        // Thread-safe read of stats
+        let statsSnapshot = statsQueue.sync { self.stats }
+        let avgConfidence = statsSnapshot.totalAnalyzed > 0 ? statsSnapshot.totalConfidence / Double(statsSnapshot.totalAnalyzed) : 0
+        let avgTime = statsSnapshot.totalAnalyzed > 0 ? statsSnapshot.totalProcessingTimeMs / Double(statsSnapshot.totalAnalyzed) : 0
         
         let statsDict: [String: Any] = [
-            "totalAnalyzed": stats.totalAnalyzed,
-            "byLabel": stats.byLabel,
+            "totalAnalyzed": statsSnapshot.totalAnalyzed,
+            "byLabel": statsSnapshot.byLabel,
             "averageConfidence": avgConfidence,
             "averageProcessingTimeMs": avgTime
         ]
@@ -254,28 +307,36 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
     
     @objc(resetStats:withRejecter:)
     func resetStats(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
-        stats = SentimentStats()
+        statsQueue.async(flags: .barrier) {
+            self.stats = SentimentStats()
+        }
         resolve(true)
     }
     
     @objc(clearCache:withRejecter:)
     func clearCache(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
-        cache.removeAll()
+        cacheQueue.async(flags: .barrier) {
+            self.cache.removeAll()
+        }
         resolve(true)
     }
     
-    private func analyzeSentiment(text: String, startTime: CFAbsoluteTime) -> SentimentResult {
+    private func analyzeSentiment(text: String, startTime: CFAbsoluteTime) throws -> SentimentResult {
         lastAccessTime = Date()
         
-        // Use ONNX model if available
-        if isModelReady {
-            if let result = analyzeWithONNX(text: text, startTime: startTime) {
-                return result
-            }
+        guard isModelReady else {
+            throw NSError(domain: "LocalIntelligenceSentiment", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Model not loaded. Call downloadModel() and wait for it to complete before analyzing."
+            ])
         }
         
-        // Fallback to NLTagger
-        return analyzeWithNLTagger(text: text, startTime: startTime)
+        guard let result = analyzeWithONNX(text: text, startTime: startTime) else {
+            throw NSError(domain: "LocalIntelligenceSentiment", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "ONNX inference failed. The model may be corrupted or incompatible."
+            ])
+        }
+        
+        return result
     }
     
     private func analyzeWithONNX(text: String, startTime: CFAbsoluteTime) -> SentimentResult? {
@@ -368,84 +429,19 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
         return expValues.map { $0 / sumExp }
     }
     
-    private func analyzeWithNLTagger(text: String, startTime: CFAbsoluteTime) -> SentimentResult {
-        let tagger = NLTagger(tagSchemes: [.sentimentScore])
-        tagger.string = text
-        
-        var positiveScore: Double = 0
-        var negativeScore: Double = 0
-        var neutralScore: Double = 0
-        var wordCount: Int = 0
-        
-        let options: NLTagger.Options = [.omitWhitespace, .omitPunctuation]
-        
-        tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .paragraph, scheme: .sentimentScore, options: options) { tag, _ in
-            if let tag = tag, let score = Double(tag.rawValue) {
-                // NLTagger returns score from -1 (negative) to 1 (positive)
-                if score > 0.1 {
-                    positiveScore += score
-                } else if score < -0.1 {
-                    negativeScore += abs(score)
-                } else {
-                    neutralScore += 1 - abs(score)
-                }
-                wordCount += 1
-            }
-            return true
-        }
-        
-        // Normalize scores
-        let total = positiveScore + negativeScore + neutralScore
-        if total > 0 {
-            positiveScore /= total
-            negativeScore /= total
-            neutralScore /= total
-        } else {
-            // Default to neutral if no sentiment detected
-            neutralScore = 1.0
-        }
-        
-        // Determine label and confidence
-        let label: String
-        let confidence: Double
-        
-        if positiveScore >= negativeScore && positiveScore >= neutralScore {
-            label = "positive"
-            confidence = positiveScore
-        } else if negativeScore >= positiveScore && negativeScore >= neutralScore {
-            label = "negative"
-            confidence = negativeScore
-        } else {
-            label = "neutral"
-            confidence = neutralScore
-        }
-        
-        let processingTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-        
-        return SentimentResult(
-            text: text,
-            label: label,
-            confidence: confidence,
-            scores: SentimentResult.Scores(
-                positive: positiveScore,
-                negative: negativeScore,
-                neutral: neutralScore
-            ),
-            processingTimeMs: processingTime
-        )
-    }
-    
     private func cacheResult(text: String, result: SentimentResult) {
-        // Evict oldest entries if cache is full
-        if cache.count >= config.maxCacheSize {
-            let sortedKeys = cache.sorted { $0.value.timestamp < $1.value.timestamp }
-            let keysToRemove = sortedKeys.prefix(cache.count - config.maxCacheSize + 1)
-            for (key, _) in keysToRemove {
-                cache.removeValue(forKey: key)
+        cacheQueue.async(flags: .barrier) {
+            // Evict oldest entries if cache is full
+            if self.cache.count >= self.config.maxCacheSize {
+                let sortedKeys = self.cache.sorted { $0.value.timestamp < $1.value.timestamp }
+                let keysToRemove = sortedKeys.prefix(self.cache.count - self.config.maxCacheSize + 1)
+                for (key, _) in keysToRemove {
+                    self.cache.removeValue(forKey: key)
+                }
             }
+            
+            self.cache[text] = CachedResult(result: result, timestamp: Date())
         }
-        
-        cache[text] = CachedResult(result: result, timestamp: Date())
     }
     
     // MARK: - ONNX Model Support
@@ -501,6 +497,13 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
             ortSession = try ORTSession(env: ortEnv!, modelPath: modelFile.path, sessionOptions: sessionOptions)
             
             isModelReady = true
+            
+            // Emit model ready event
+            DispatchQueue.main.async { [weak self] in
+                self?.sendEvent(withName: "onModelReady", body: [
+                    "modelId": LocalIntelligenceSentiment.MODEL_ID
+                ])
+            }
         } catch {
             tokenizer = nil
             ortSession = nil
