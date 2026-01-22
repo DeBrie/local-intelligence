@@ -9,7 +9,7 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
-import { useRedactor, getStats, resetStats, downloadModel, initialize as initializePII } from '@local-intelligence/pii';
+import { useRedactor, getStats, resetStats, downloadModel, waitForModel, getModelStatus, cleanup } from '@local-intelligence/pii';
 import { getModelStatus as getCoreModelStatus } from '@local-intelligence/core';
 import type { PIIEntity, PIIStats } from '@local-intelligence/pii';
 
@@ -24,9 +24,10 @@ export function PIIDemoScreen() {
     const [inputText, setInputText] = useState(SAMPLE_TEXTS[0]);
     const [stats, setStats] = useState<PIIStats | null>(null);
     const [isModelDownloaded, setIsModelDownloaded] = useState(false);
+    const [isModelReady, setIsModelReady] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState(0);
-    const [isInitializingModel, setIsInitializingModel] = useState(false);
+    const [isLoadingModel, setIsLoadingModel] = useState(false);
 
     // Using the useRedactor hook - the recommended way to integrate PII redaction
     const {
@@ -106,11 +107,22 @@ export function PIIDemoScreen() {
         }
     }, [isInitialized]);
 
+    // Cleanup on unmount
+    React.useEffect(() => {
+        return () => {
+            cleanup();
+        };
+    }, []);
+
     const checkModelStatus = async () => {
         try {
-            // Use Core module's getModelStatus which correctly reports download state
-            const status = await getCoreModelStatus('bert-small-pii');
-            setIsModelDownloaded(status.state === 'ready');
+            // Check if model is downloaded via Core module
+            const coreStatus = await getCoreModelStatus('bert-small-pii');
+            setIsModelDownloaded(coreStatus.state === 'ready');
+
+            // Check if model is loaded and ready for inference
+            const piiStatus = await getModelStatus();
+            setIsModelReady(piiStatus.isModelReady);
         } catch {
             // Model status check failed, ignore
         }
@@ -123,8 +135,10 @@ export function PIIDemoScreen() {
             await downloadModel((progress) => {
                 setDownloadProgress(progress);
             });
-            await checkModelStatus();
-            Alert.alert('Success', 'PII model downloaded successfully!');
+            setIsModelDownloaded(true);
+            Alert.alert('Success', 'PII model downloaded. Now loading model...');
+            // Automatically load the model after download
+            await handleLoadModel();
         } catch (err) {
             Alert.alert('Error', err instanceof Error ? err.message : 'Failed to download model');
         } finally {
@@ -132,33 +146,16 @@ export function PIIDemoScreen() {
         }
     };
 
-    const handleInitializeModel = async () => {
-        setIsInitializingModel(true);
+    const handleLoadModel = async () => {
+        setIsLoadingModel(true);
         try {
-            await initializePII({
-                enabledTypes: [
-                    'person',
-                    'organization',
-                    'location',
-                    'email_address',
-                    'phone_number',
-                    'phone',
-                    'ssn',
-                    'us_ssn',
-                    'address',
-                    'email',
-                    'credit_card',
-                ],
-                redactionChar: '*',
-                minConfidence: 0.7,
-                preserveLength: true,
-            });
-            await checkModelStatus();
-            Alert.alert('Success', 'PII model initialized successfully!');
+            await waitForModel(30000); // Wait up to 30 seconds
+            setIsModelReady(true);
+            Alert.alert('Success', 'PII model loaded and ready!');
         } catch (err) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to initialize model');
+            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to load model');
         } finally {
-            setIsInitializingModel(false);
+            setIsLoadingModel(false);
         }
     };
 
@@ -216,6 +213,19 @@ export function PIIDemoScreen() {
                         </Text>
                     </View>
                 </View>
+                <View style={[styles.statusRow, { marginTop: 8 }]}>
+                    <Text style={styles.statusLabel}>Model Ready:</Text>
+                    <View
+                        style={[
+                            styles.statusBadge,
+                            { backgroundColor: isModelReady ? '#4CAF50' : '#F44336' },
+                        ]}
+                    >
+                        <Text style={styles.statusBadgeText}>
+                            {isModelReady ? 'Ready' : 'Not Loaded'}
+                        </Text>
+                    </View>
+                </View>
                 {isInitialized && (
                     <View style={styles.downloadSection}>
                         {isDownloading ? (
@@ -225,11 +235,11 @@ export function PIIDemoScreen() {
                                     Downloading... {downloadProgress.toFixed(0)}%
                                 </Text>
                             </View>
-                        ) : isInitializingModel ? (
+                        ) : isLoadingModel ? (
                             <View style={styles.downloadProgress}>
                                 <ActivityIndicator size="small" color="#4CAF50" />
                                 <Text style={[styles.downloadText, { color: '#4CAF50' }]}>
-                                    Initializing model...
+                                    Loading model...
                                 </Text>
                             </View>
                         ) : (
@@ -244,31 +254,31 @@ export function PIIDemoScreen() {
                                         </Text>
                                     </TouchableOpacity>
                                 )}
+                                {isModelDownloaded && !isModelReady && (
+                                    <TouchableOpacity
+                                        style={styles.initializeButton}
+                                        onPress={handleLoadModel}
+                                    >
+                                        <Text style={styles.downloadButtonText}>
+                                            Load Model
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
                                 {isModelDownloaded && (
-                                    <>
-                                        <TouchableOpacity
-                                            style={styles.initializeButton}
-                                            onPress={handleInitializeModel}
-                                        >
-                                            <Text style={styles.downloadButtonText}>
-                                                Initialize Model
-                                            </Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={styles.redownloadButton}
-                                            onPress={handleDownloadModel}
-                                        >
-                                            <Text style={styles.downloadButtonText}>
-                                                Re-download Model
-                                            </Text>
-                                        </TouchableOpacity>
-                                    </>
+                                    <TouchableOpacity
+                                        style={styles.redownloadButton}
+                                        onPress={handleDownloadModel}
+                                    >
+                                        <Text style={styles.downloadButtonText}>
+                                            Re-download Model
+                                        </Text>
+                                    </TouchableOpacity>
                                 )}
                             </View>
                         )}
-                        {!isModelDownloaded && (
-                            <Text style={styles.fallbackNote}>
-                                Currently using regex patterns for PII detection
+                        {!isModelReady && (
+                            <Text style={styles.modelRequiredNote}>
+                                Model must be downloaded and loaded for ML-based entity detection
                             </Text>
                         )}
                     </View>
@@ -714,6 +724,13 @@ const styles = StyleSheet.create({
     fallbackNote: {
         fontSize: 12,
         color: '#999',
+        textAlign: 'center',
+        marginTop: 8,
+        fontStyle: 'italic',
+    },
+    modelRequiredNote: {
+        fontSize: 12,
+        color: '#FF9800',
         textAlign: 'center',
         marginTop: 8,
         fontStyle: 'italic',
