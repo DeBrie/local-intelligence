@@ -12,6 +12,8 @@ export {
   getConfig,
   getModelStatus,
   downloadModel,
+  waitForModel,
+  cleanup,
 } from './LocalIntelligencePII';
 
 export {

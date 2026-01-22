@@ -378,6 +378,60 @@ export async function downloadModel(
   }
 }
 
+/**
+ * Wait for the PII model to be ready.
+ * Uses polling to handle race conditions between download and model loading.
+ * @param timeoutMs Maximum time to wait (default 30 seconds)
+ */
+export async function waitForModel(timeoutMs = 30000): Promise<void> {
+  // Check if already ready
+  const initialStatus = await getModelStatus();
+  if (initialStatus.isModelReady) {
+    return;
+  }
+
+  return new Promise((resolve, reject) => {
+    const pollInterval = 500; // Poll every 500ms
+    let resolved = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const cleanup = () => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const onReady = () => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      resolve();
+    };
+
+    // Set up timeout
+    const timeout = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      reject(new Error(`PII model loading timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    // Poll for model ready status
+    pollTimer = setInterval(async () => {
+      try {
+        const status = await getModelStatus();
+        if (status.isModelReady) {
+          clearTimeout(timeout);
+          onReady();
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, pollInterval);
+  });
+}
+
 export function getConfig(): PIIConfig {
   return { ...currentConfig };
 }

@@ -543,28 +543,41 @@ class LocalIntelligencePII: RCTEventEmitter {
     
     @objc(notifyModelDownloaded:withPath:)
     func notifyModelDownloaded(_ modelId: String, path: String) {
-        // Called from JS when core module emits LocalIntelligenceModelDownloaded
+        print("[PII] notifyModelDownloaded called with modelId: \(modelId), path: \(path)")
+        
         if modelId == "bert-small-pii" {
             let modelFile = URL(fileURLWithPath: path)
             let vocabFile = modelFile.deletingLastPathComponent().appendingPathComponent("bert-small-pii.vocab.txt")
-            if FileManager.default.fileExists(atPath: modelFile.path) &&
-               FileManager.default.fileExists(atPath: vocabFile.path) {
+            
+            let modelExists = FileManager.default.fileExists(atPath: modelFile.path)
+            let vocabExists = FileManager.default.fileExists(atPath: vocabFile.path)
+            
+            print("[PII] Model file exists: \(modelExists) at \(modelFile.path)")
+            print("[PII] Vocab file exists: \(vocabExists) at \(vocabFile.path)")
+            
+            if modelExists && vocabExists {
                 DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                     self?.loadOnnxModel(modelFile: modelFile, vocabFile: vocabFile)
                 }
+            } else {
+                print("[PII] ERROR: Missing required files for model loading")
             }
         }
     }
     
     private func loadOnnxModel(modelFile: URL, vocabFile: URL) {
+        print("[PII] loadOnnxModel starting...")
         modelLock.lock()
         defer { modelLock.unlock() }
         
         do {
             // Load tokenizer first
+            print("[PII] Loading tokenizer from \(vocabFile.path)")
             tokenizer = try WordPieceTokenizer(vocabFile: vocabFile)
+            print("[PII] Tokenizer loaded successfully")
             
             // Initialize ONNX Runtime environment
+            print("[PII] Initializing ONNX Runtime environment")
             ortEnv = try ORTEnv(loggingLevel: .warning)
             
             // Create session options
@@ -572,10 +585,14 @@ class LocalIntelligencePII: RCTEventEmitter {
             try sessionOptions.setGraphOptimizationLevel(.all)
             
             // Create session
+            print("[PII] Creating ONNX session from \(modelFile.path)")
             ortSession = try ORTSession(env: ortEnv!, modelPath: modelFile.path, sessionOptions: sessionOptions)
+            print("[PII] ONNX session created successfully")
             
             isModelReady = true
+            print("[PII] Model is now ready!")
         } catch {
+            print("[PII] ERROR loading model: \(error.localizedDescription)")
             tokenizer = nil
             ortSession = nil
             ortEnv = nil
@@ -597,9 +614,16 @@ class LocalIntelligencePII: RCTEventEmitter {
             let maxLength = 512
             let tokenized = tok.tokenize(text: text, maxLength: maxLength)
             
-            // Create input tensors
-            let inputIdsData = Data(bytes: tokenized.inputIds.map { Int64($0) }, count: maxLength * MemoryLayout<Int64>.size)
-            let attentionMaskData = Data(bytes: tokenized.attentionMask.map { Int64($0) }, count: maxLength * MemoryLayout<Int64>.size)
+            // Create input tensors - must keep arrays alive during Data creation
+            let inputIds: [Int64] = tokenized.inputIds.map { Int64($0) }
+            let attentionMask: [Int64] = tokenized.attentionMask.map { Int64($0) }
+            
+            let inputIdsData = inputIds.withUnsafeBufferPointer { buffer in
+                Data(buffer: buffer)
+            }
+            let attentionMaskData = attentionMask.withUnsafeBufferPointer { buffer in
+                Data(buffer: buffer)
+            }
             
             let inputShape: [NSNumber] = [1, NSNumber(value: maxLength)]
             
