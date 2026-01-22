@@ -149,30 +149,65 @@ export async function downloadModel(
 }
 
 /**
- * Wait for the model to be ready using event-based approach.
- * Returns a promise that resolves when the model is loaded.
+ * Wait for the model to be ready.
+ * Uses polling with event listening to handle race conditions.
  * @param timeoutMs Maximum time to wait (default 30 seconds)
  */
 export async function waitForModel(timeoutMs = 30000): Promise<void> {
-  const status = await getModelStatus();
-  if (status.isModelReady) {
+  // Check if already ready
+  const initialStatus = await getModelStatus();
+  if (initialStatus.isModelReady) {
     return;
   }
 
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
+    let resolved = false;
+    const pollInterval = 500; // Poll every 500ms
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const cleanup = () => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
       state.modelReadySubscription?.remove();
       state.modelReadySubscription = null;
+    };
+
+    const onReady = () => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      resolve();
+    };
+
+    // Set up timeout
+    const timeout = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
       reject(new Error(`Model loading timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
+    // Listen for event (in case it fires)
     const emitter = getEventEmitter();
     state.modelReadySubscription = emitter.addListener('onModelReady', () => {
       clearTimeout(timeout);
-      state.modelReadySubscription?.remove();
-      state.modelReadySubscription = null;
-      resolve();
+      onReady();
     });
+
+    // Also poll in case we missed the event
+    pollTimer = setInterval(async () => {
+      try {
+        const status = await getModelStatus();
+        if (status.isModelReady) {
+          clearTimeout(timeout);
+          onReady();
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, pollInterval);
   });
 }
 

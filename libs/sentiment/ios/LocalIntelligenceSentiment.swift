@@ -448,14 +448,24 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
     
     @objc(notifyModelDownloaded:withPath:)
     func notifyModelDownloaded(_ modelId: String, path: String) {
+        print("[Sentiment] notifyModelDownloaded called with modelId: \(modelId), path: \(path)")
+        
         if modelId == LocalIntelligenceSentiment.MODEL_ID {
             let modelFile = URL(fileURLWithPath: path)
             let vocabFile = modelFile.deletingLastPathComponent().appendingPathComponent("\(LocalIntelligenceSentiment.MODEL_ID).vocab.txt")
-            if FileManager.default.fileExists(atPath: modelFile.path) &&
-               FileManager.default.fileExists(atPath: vocabFile.path) {
+            
+            let modelExists = FileManager.default.fileExists(atPath: modelFile.path)
+            let vocabExists = FileManager.default.fileExists(atPath: vocabFile.path)
+            
+            print("[Sentiment] Model file exists: \(modelExists) at \(modelFile.path)")
+            print("[Sentiment] Vocab file exists: \(vocabExists) at \(vocabFile.path)")
+            
+            if modelExists && vocabExists {
                 DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                     self?.loadOnnxModel(modelFile: modelFile, vocabFile: vocabFile)
                 }
+            } else {
+                print("[Sentiment] ERROR: Missing required files for model loading")
             }
         }
     }
@@ -479,14 +489,18 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
     }
     
     private func loadOnnxModel(modelFile: URL, vocabFile: URL) {
+        print("[Sentiment] loadOnnxModel starting...")
         modelLock.lock()
         defer { modelLock.unlock() }
         
         do {
             // Load tokenizer first
+            print("[Sentiment] Loading tokenizer from \(vocabFile.path)")
             tokenizer = try WordPieceTokenizer(vocabFile: vocabFile)
+            print("[Sentiment] Tokenizer loaded successfully")
             
             // Initialize ONNX Runtime environment
+            print("[Sentiment] Initializing ONNX Runtime environment")
             ortEnv = try ORTEnv(loggingLevel: .warning)
             
             // Create session options
@@ -494,17 +508,22 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
             try sessionOptions.setGraphOptimizationLevel(.all)
             
             // Create session
+            print("[Sentiment] Creating ONNX session from \(modelFile.path)")
             ortSession = try ORTSession(env: ortEnv!, modelPath: modelFile.path, sessionOptions: sessionOptions)
+            print("[Sentiment] ONNX session created successfully")
             
             isModelReady = true
+            print("[Sentiment] Model is now ready!")
             
             // Emit model ready event
             DispatchQueue.main.async { [weak self] in
+                print("[Sentiment] Emitting onModelReady event")
                 self?.sendEvent(withName: "onModelReady", body: [
                     "modelId": LocalIntelligenceSentiment.MODEL_ID
                 ])
             }
         } catch {
+            print("[Sentiment] ERROR loading model: \(error.localizedDescription)")
             tokenizer = nil
             ortSession = nil
             ortEnv = nil
