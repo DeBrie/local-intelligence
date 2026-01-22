@@ -353,9 +353,16 @@ class LocalIntelligenceSentiment: RCTEventEmitter {
             let maxLength = 512
             let tokenized = tok.tokenize(text: text, maxLength: maxLength)
             
-            // Create input tensors
-            let inputIdsData = Data(bytes: tokenized.inputIds.map { Int64($0) }, count: maxLength * MemoryLayout<Int64>.size)
-            let attentionMaskData = Data(bytes: tokenized.attentionMask.map { Int64($0) }, count: maxLength * MemoryLayout<Int64>.size)
+            // Create input tensors - must keep arrays alive during Data creation
+            let inputIds: [Int64] = tokenized.inputIds.map { Int64($0) }
+            let attentionMask: [Int64] = tokenized.attentionMask.map { Int64($0) }
+            
+            let inputIdsData = inputIds.withUnsafeBufferPointer { buffer in
+                Data(buffer: buffer)
+            }
+            let attentionMaskData = attentionMask.withUnsafeBufferPointer { buffer in
+                Data(buffer: buffer)
+            }
             
             let inputShape: [NSNumber] = [1, NSNumber(value: maxLength)]
             
