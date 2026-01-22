@@ -24,6 +24,12 @@ RCT_EXTERN_METHOD(resetStats:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(clearCache:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(getModelStatus:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(notifyModelDownloaded:(NSString *)modelId
+                  withPath:(NSString *)path)
+
 + (BOOL)requiresMainQueueSetup
 {
     return NO;
