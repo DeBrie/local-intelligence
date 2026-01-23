@@ -9,7 +9,7 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
-import { useRedactor, getStats, resetStats, waitForModel, getModelStatus, cleanup } from '@local-intelligence/pii';
+import { useRedactor, getStats, resetStats, waitForModel, getModelStatus, cleanup, downloadModel } from '@local-intelligence/pii';
 import type { PIIEntity, PIIStats } from '@local-intelligence/pii';
 import { ModelCard, useModelState } from '../components';
 import type { ModelDefinition } from '../components';
@@ -66,6 +66,11 @@ export function PIIDemoScreen() {
         },
     });
 
+    // Model download callback - uses PII module's downloadModel which includes notifyModelDownloaded
+    const handleModelDownload = useCallback(async (onProgress?: (progress: number) => void) => {
+        await downloadModel(onProgress);
+    }, []);
+
     // Model initialization callback
     const handleModelInitialize = useCallback(async () => {
         await waitForModel(30000);
@@ -85,6 +90,7 @@ export function PIIDemoScreen() {
         handleRedownload,
     } = useModelState({
         modelId: 'bert-small-pii',
+        onDownload: handleModelDownload,
         onInitialize: handleModelInitialize,
         getIsModelReady,
     });

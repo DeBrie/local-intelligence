@@ -213,14 +213,18 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
     
     @ReactMethod
     fun notifyModelDownloaded(modelId: String, path: String) {
+        android.util.Log.d("PII", "notifyModelDownloaded called with modelId: $modelId, path: $path")
         // Called from JS when core module emits LocalIntelligenceModelDownloaded
         if (modelId == "bert-small-pii") {
             val modelFile = File(path)
             val vocabFile = File(modelFile.parent, "bert-small-pii.vocab.txt")
+            android.util.Log.d("PII", "Model file exists: ${modelFile.exists()}, Vocab file exists: ${vocabFile.exists()}")
             if (modelFile.exists() && vocabFile.exists()) {
                 scope.launch {
                     loadOnnxModel(modelFile, vocabFile)
                 }
+            } else {
+                android.util.Log.e("PII", "Missing required files - model: ${modelFile.absolutePath}, vocab: ${vocabFile.absolutePath}")
             }
         }
     }
@@ -740,17 +744,25 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
     }
     
     private fun loadOnnxModel(modelFile: File, vocabFile: File) {
+        android.util.Log.d("PII", "loadOnnxModel called with model: ${modelFile.absolutePath}, vocab: ${vocabFile.absolutePath}")
         synchronized(modelLock) {
             try {
                 // Load tokenizer first
+                android.util.Log.d("PII", "Initializing tokenizer...")
                 tokenizer = WordPieceTokenizer(vocabFile)
+                android.util.Log.d("PII", "Tokenizer initialized successfully")
                 
                 // Then load ONNX model
+                android.util.Log.d("PII", "Initializing ONNX Runtime...")
                 ortEnvironment = OrtEnvironment.getEnvironment()
                 ortSession = ortEnvironment?.createSession(modelFile.absolutePath)
+                android.util.Log.d("PII", "ONNX session created successfully")
+                
                 isModelReady = true
                 isModelDownloading = false
+                android.util.Log.d("PII", "Model is now ready!")
             } catch (e: Exception) {
+                android.util.Log.e("PII", "Error loading model: ${e.message}", e)
                 tokenizer = null
                 ortSession = null
                 isModelReady = false
@@ -760,11 +772,15 @@ class LocalIntelligencePIIModule(reactContext: ReactApplicationContext) :
     }
     
     fun onModelDownloaded(modelId: String, path: String) {
+        android.util.Log.d("PII", "onModelDownloaded called with modelId: $modelId, path: $path")
         if (modelId == "bert-small-pii") {
             val modelFile = File(path)
             val vocabFile = File(modelFile.parent, "bert-small-pii.vocab.txt")
+            android.util.Log.d("PII", "Model file exists: ${modelFile.exists()}, Vocab file exists: ${vocabFile.exists()}")
             if (modelFile.exists() && vocabFile.exists()) {
                 loadOnnxModel(modelFile, vocabFile)
+            } else {
+                android.util.Log.e("PII", "Missing required files for model loading")
             }
         }
     }

@@ -19,6 +19,7 @@ import {
     destroy,
     getModelStatus,
     waitForModel,
+    downloadModel,
 } from '@local-intelligence/sentiment';
 import type { SentimentStats } from '@local-intelligence/sentiment';
 import { ModelCard, useModelState } from '../components';
@@ -65,6 +66,11 @@ export function SentimentDemoScreen() {
         },
     });
 
+    // Model download callback - uses sentiment module's downloadModel which includes notifyModelDownloaded
+    const handleModelDownload = useCallback(async (onProgress?: (progress: number) => void) => {
+        await downloadModel(onProgress);
+    }, []);
+
     // Model initialization callback
     const handleModelInitialize = useCallback(async () => {
         await waitForModel(30000);
@@ -84,6 +90,7 @@ export function SentimentDemoScreen() {
         handleRedownload,
     } = useModelState({
         modelId: 'distilbert-sst2',
+        onDownload: handleModelDownload,
         onInitialize: handleModelInitialize,
         getIsModelReady,
     });

@@ -445,23 +445,37 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
     }
     
     private fun loadOnnxModel(modelPath: String) {
+        android.util.Log.d("Sentiment", "loadOnnxModel called with path: $modelPath")
         synchronized(modelLock) {
             try {
                 val modelFile = File(modelPath)
-                if (!modelFile.exists()) return
+                if (!modelFile.exists()) {
+                    android.util.Log.e("Sentiment", "Model file does not exist: $modelPath")
+                    return
+                }
+                android.util.Log.d("Sentiment", "Model file exists: ${modelFile.absolutePath}")
                 
                 // Load vocab file
                 val vocabFile = File(modelFile.parent, "$MODEL_ID.vocab.txt")
-                if (!vocabFile.exists()) return
+                if (!vocabFile.exists()) {
+                    android.util.Log.e("Sentiment", "Vocab file does not exist: ${vocabFile.absolutePath}")
+                    return
+                }
+                android.util.Log.d("Sentiment", "Vocab file exists: ${vocabFile.absolutePath}")
                 
                 // Initialize tokenizer
+                android.util.Log.d("Sentiment", "Initializing tokenizer...")
                 tokenizer = WordPieceTokenizer(vocabFile)
+                android.util.Log.d("Sentiment", "Tokenizer initialized successfully")
                 
                 // Initialize ONNX Runtime
+                android.util.Log.d("Sentiment", "Initializing ONNX Runtime...")
                 ortEnvironment = OrtEnvironment.getEnvironment()
                 ortSession = ortEnvironment?.createSession(modelPath)
+                android.util.Log.d("Sentiment", "ONNX session created successfully")
                 
                 isModelReady = true
+                android.util.Log.d("Sentiment", "Model is now ready!")
                 
                 // Emit model ready event
                 val params = Arguments.createMap().apply {
@@ -469,6 +483,7 @@ class LocalIntelligenceSentimentModule(reactContext: ReactApplicationContext) :
                 }
                 sendEvent("onModelReady", params)
             } catch (e: Exception) {
+                android.util.Log.e("Sentiment", "Error loading model: ${e.message}", e)
                 ortSession = null
                 ortEnvironment = null
                 tokenizer = null

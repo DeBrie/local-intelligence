@@ -14,6 +14,7 @@ import type { DownloadState, ActivityState, ModelCardState } from './ModelCard';
 export interface UseModelStateOptions {
   modelId: string;
   onInitialize: () => Promise<void>;
+  onDownload?: (onProgress?: (progress: number) => void) => Promise<void>;
   getIsModelReady?: () => Promise<boolean>;
   autoCheckStatus?: boolean;
 }
@@ -32,6 +33,7 @@ export interface UseModelStateReturn {
 export function useModelState({
   modelId,
   onInitialize,
+  onDownload,
   getIsModelReady,
   autoCheckStatus = true,
 }: UseModelStateOptions): UseModelStateReturn {
@@ -131,14 +133,25 @@ export function useModelState({
         await initializeCore();
       }
 
-      await coreDownloadModel(modelId, {
-        onProgress: (progress) => {
+      // Use custom download function if provided (includes notifyModelDownloaded)
+      if (onDownload) {
+        await onDownload((progress) => {
           setState((prev) => ({
             ...prev,
-            downloadProgress: progress.progress * 100,
+            downloadProgress: progress,
           }));
-        },
-      });
+        });
+      } else {
+        // Fall back to core download
+        await coreDownloadModel(modelId, {
+          onProgress: (progress) => {
+            setState((prev) => ({
+              ...prev,
+              downloadProgress: progress.progress * 100,
+            }));
+          },
+        });
+      }
 
       setState((prev) => ({
         ...prev,
@@ -174,7 +187,7 @@ export function useModelState({
         downloadProgress: 0,
       }));
     }
-  }, [modelId, onInitialize]);
+  }, [modelId, onInitialize, onDownload]);
 
   const handleRedownload = useCallback(async () => {
     Alert.alert(
