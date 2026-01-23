@@ -170,17 +170,35 @@ class LocalIntelligenceCore: RCTEventEmitter {
             
             self.activeDownloads[modelId] = task
             task.resume()
+        }.resume()
+    }
+    
+    /// Downloads the vocab file for a model if available (called after main model download completes)
+    private func downloadVocabFile(modelId: String, cdnBaseUrl: String, completion: @escaping () -> Void) {
+        let vocabUrlString = "\(cdnBaseUrl)/\(modelId)/latest/vocab.txt"
+        guard let vocabUrl = URL(string: vocabUrlString) else {
+            completion()
+            return
+        }
+        
+        URLSession.shared.dataTask(with: vocabUrl) { [weak self] vocabData, response, _ in
+            defer { completion() }
             
-            // Also download vocab.txt if available
-            let vocabUrlString = "\(cdnBaseUrl)/\(modelId)/latest/vocab.txt"
-            if let vocabUrl = URL(string: vocabUrlString) {
-                URLSession.shared.dataTask(with: vocabUrl) { vocabData, _, _ in
-                    if let vocabData = vocabData,
-                       let cacheDir = self.getCacheDirectory() {
-                        let vocabPath = (cacheDir as NSString).appendingPathComponent("\(modelId).vocab.txt")
-                        try? vocabData.write(to: URL(fileURLWithPath: vocabPath))
-                    }
-                }.resume()
+            // Check if vocab file exists (404 means no vocab file for this model)
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 {
+                print("[Core] No vocab file available for model \(modelId)")
+                return
+            }
+            
+            if let vocabData = vocabData,
+               let cacheDir = self?.getCacheDirectory() {
+                let vocabPath = (cacheDir as NSString).appendingPathComponent("\(modelId).vocab.txt")
+                do {
+                    try vocabData.write(to: URL(fileURLWithPath: vocabPath))
+                    print("[Core] Vocab file downloaded to \(vocabPath)")
+                } catch {
+                    print("[Core] Failed to write vocab file: \(error)")
+                }
             }
         }.resume()
     }
@@ -322,18 +340,22 @@ class LocalIntelligenceCore: RCTEventEmitter {
             }
             
             let status = ModelStatus(state: "ready", progress: nil, sizeBytes: actualSize, path: destPath, message: nil)
-            modelCache[modelId] = status
+            self.modelCache[modelId] = status
             
-            // Emit model downloaded event
-            if hasListeners {
-                sendEvent(withName: "LocalIntelligenceModelDownloaded", body: [
-                    "modelId": modelId,
-                    "path": destPath,
-                    "format": format
-                ])
+            // Download vocab file before resolving (needed for tokenizer-based models)
+            let cdnBaseUrl = self.config?.cdnBaseUrl ?? "https://cdn.localintelligence.dev/models"
+            self.downloadVocabFile(modelId: modelId, cdnBaseUrl: cdnBaseUrl) { [weak self] in
+                // Emit model downloaded event after vocab is ready
+                if self?.hasListeners == true {
+                    self?.sendEvent(withName: "LocalIntelligenceModelDownloaded", body: [
+                        "modelId": modelId,
+                        "path": destPath,
+                        "format": format
+                    ])
+                }
+                
+                resolve("{\"path\": \"\(destPath)\", \"format\": \"\(format)\"}")
             }
-            
-            resolve("{\"path\": \"\(destPath)\", \"format\": \"\(format)\"}")
         } catch {
             reject("DOWNLOAD_ERROR", error.localizedDescription, error)
         }

@@ -22,6 +22,7 @@ import {
 import type { ModelStatus } from '@local-intelligence/core';
 import { initialize as initializeSentiment } from '@local-intelligence/sentiment';
 import { initialize as initializePII } from '@local-intelligence/pii';
+import { initialize as initializeSemanticSearch } from '@local-intelligence/semantic-search';
 
 // Model definitions for each platform
 interface ModelDefinition {
@@ -303,6 +304,11 @@ export function ModelManagementScreen() {
                     redactionChar: '*',
                     minConfidence: 0.7,
                     preserveLength: true,
+                });
+            } else if (modelId === 'minilm-l6-v2') {
+                await initializeSemanticSearch({
+                    embeddingDimensions: 384,
+                    modelId: 'minilm-l6-v2',
                 });
             } else {
                 throw new Error(`No initializer available for model: ${modelId}`);
