@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
     View,
     Text,
@@ -9,9 +9,20 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
-import { useRedactor, getStats, resetStats, downloadModel, waitForModel, getModelStatus, cleanup } from '@local-intelligence/pii';
-import { getModelStatus as getCoreModelStatus } from '@local-intelligence/core';
+import { useRedactor, getStats, resetStats, waitForModel, getModelStatus, cleanup } from '@local-intelligence/pii';
 import type { PIIEntity, PIIStats } from '@local-intelligence/pii';
+import { ModelCard, useModelState } from '../components';
+import type { ModelDefinition } from '../components';
+
+const PII_MODEL: ModelDefinition = {
+    id: 'bert-small-pii',
+    name: 'BERT Small PII',
+    description: 'Personal information detection model for names, emails, phones, SSN, etc.',
+    version: '1.0.0',
+    sizeBytes: 30_000_000,
+    format: 'onnx',
+    usedBy: ['PII Redaction'],
+};
 
 const SAMPLE_TEXTS = [
     'Contact John Smith at john.smith@example.com or call 555-123-4567.',
@@ -23,11 +34,6 @@ const SAMPLE_TEXTS = [
 export function PIIDemoScreen() {
     const [inputText, setInputText] = useState(SAMPLE_TEXTS[0]);
     const [stats, setStats] = useState<PIIStats | null>(null);
-    const [isModelDownloaded, setIsModelDownloaded] = useState(false);
-    const [isModelReady, setIsModelReady] = useState(false);
-    const [isDownloading, setIsDownloading] = useState(false);
-    const [downloadProgress, setDownloadProgress] = useState(0);
-    const [isLoadingModel, setIsLoadingModel] = useState(false);
 
     // Using the useRedactor hook - the recommended way to integrate PII redaction
     const {
@@ -59,6 +65,38 @@ export function PIIDemoScreen() {
             preserveLength: true,
         },
     });
+
+    // Model initialization callback
+    const handleModelInitialize = useCallback(async () => {
+        await waitForModel(30000);
+    }, []);
+
+    // Check if model is ready for inference
+    const getIsModelReady = useCallback(async () => {
+        const status = await getModelStatus();
+        return status.isModelReady;
+    }, []);
+
+    // Use shared model state hook
+    const {
+        state: modelState,
+        handleDownload,
+        handleInitialize,
+        handleRedownload,
+    } = useModelState({
+        modelId: 'bert-small-pii',
+        onInitialize: handleModelInitialize,
+        getIsModelReady,
+    });
+
+    const isModelReady = modelState.activityState === 'initialized' || modelState.activityState === 'in_memory';
+
+    // Cleanup on unmount
+    React.useEffect(() => {
+        return () => {
+            cleanup();
+        };
+    }, []);
 
     const handleDetect = async () => {
         if (!inputText.trim()) {
@@ -100,65 +138,6 @@ export function PIIDemoScreen() {
         reset(); // Clear previous results when loading new sample
     };
 
-    // Check model status when initialized
-    React.useEffect(() => {
-        if (isInitialized) {
-            checkModelStatus();
-        }
-    }, [isInitialized]);
-
-    // Cleanup on unmount
-    React.useEffect(() => {
-        return () => {
-            cleanup();
-        };
-    }, []);
-
-    const checkModelStatus = async () => {
-        try {
-            // Check if model is downloaded via Core module
-            const coreStatus = await getCoreModelStatus('bert-small-pii');
-            setIsModelDownloaded(coreStatus.state === 'ready');
-
-            // Check if model is loaded and ready for inference
-            const piiStatus = await getModelStatus();
-            setIsModelReady(piiStatus.isModelReady);
-        } catch {
-            // Model status check failed, ignore
-        }
-    };
-
-    const handleDownloadModel = async () => {
-        setIsDownloading(true);
-        setDownloadProgress(0);
-        try {
-            await downloadModel((progress) => {
-                setDownloadProgress(progress);
-            });
-            setIsModelDownloaded(true);
-            Alert.alert('Success', 'PII model downloaded. Now loading model...');
-            // Automatically load the model after download
-            await handleLoadModel();
-        } catch (err) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to download model');
-        } finally {
-            setIsDownloading(false);
-        }
-    };
-
-    const handleLoadModel = async () => {
-        setIsLoadingModel(true);
-        try {
-            await waitForModel(30000); // Wait up to 30 seconds
-            setIsModelReady(true);
-            Alert.alert('Success', 'PII model loaded and ready!');
-        } catch (err) {
-            Alert.alert('Error', err instanceof Error ? err.message : 'Failed to load model');
-        } finally {
-            setIsLoadingModel(false);
-        }
-    };
-
     const getEntityColor = (type: string): string => {
         const colors: Record<string, string> = {
             person: '#FF6B6B',
@@ -185,104 +164,17 @@ export function PIIDemoScreen() {
                 </Text>
             </View>
 
-            {/* Status */}
-            <View style={styles.statusCard}>
-                <View style={styles.statusRow}>
-                    <Text style={styles.statusLabel}>Status:</Text>
-                    <View
-                        style={[
-                            styles.statusBadge,
-                            { backgroundColor: isInitialized ? '#4CAF50' : '#FF9800' },
-                        ]}
-                    >
-                        <Text style={styles.statusBadgeText}>
-                            {isInitialized ? 'Ready' : 'Not Initialized'}
-                        </Text>
-                    </View>
-                </View>
-                <View style={styles.statusRow}>
-                    <Text style={styles.statusLabel}>BERT Model:</Text>
-                    <View
-                        style={[
-                            styles.statusBadge,
-                            { backgroundColor: isModelDownloaded ? '#4CAF50' : '#FF9800' },
-                        ]}
-                    >
-                        <Text style={styles.statusBadgeText}>
-                            {isModelDownloaded ? 'Downloaded' : 'Not Downloaded'}
-                        </Text>
-                    </View>
-                </View>
-                <View style={[styles.statusRow, { marginTop: 8 }]}>
-                    <Text style={styles.statusLabel}>Model Ready:</Text>
-                    <View
-                        style={[
-                            styles.statusBadge,
-                            { backgroundColor: isModelReady ? '#4CAF50' : '#F44336' },
-                        ]}
-                    >
-                        <Text style={styles.statusBadgeText}>
-                            {isModelReady ? 'Ready' : 'Not Loaded'}
-                        </Text>
-                    </View>
-                </View>
-                {isInitialized && (
-                    <View style={styles.downloadSection}>
-                        {isDownloading ? (
-                            <View style={styles.downloadProgress}>
-                                <ActivityIndicator size="small" color="#007AFF" />
-                                <Text style={styles.downloadText}>
-                                    Downloading... {downloadProgress.toFixed(0)}%
-                                </Text>
-                            </View>
-                        ) : isLoadingModel ? (
-                            <View style={styles.downloadProgress}>
-                                <ActivityIndicator size="small" color="#4CAF50" />
-                                <Text style={[styles.downloadText, { color: '#4CAF50' }]}>
-                                    Loading model...
-                                </Text>
-                            </View>
-                        ) : (
-                            <View style={styles.modelButtonsColumn}>
-                                {!isModelDownloaded && (
-                                    <TouchableOpacity
-                                        style={styles.downloadButton}
-                                        onPress={handleDownloadModel}
-                                    >
-                                        <Text style={styles.downloadButtonText}>
-                                            Download Model (~30MB)
-                                        </Text>
-                                    </TouchableOpacity>
-                                )}
-                                {isModelDownloaded && !isModelReady && (
-                                    <TouchableOpacity
-                                        style={styles.initializeButton}
-                                        onPress={handleLoadModel}
-                                    >
-                                        <Text style={styles.downloadButtonText}>
-                                            Load Model
-                                        </Text>
-                                    </TouchableOpacity>
-                                )}
-                                {isModelDownloaded && (
-                                    <TouchableOpacity
-                                        style={styles.redownloadButton}
-                                        onPress={handleDownloadModel}
-                                    >
-                                        <Text style={styles.downloadButtonText}>
-                                            Re-download Model
-                                        </Text>
-                                    </TouchableOpacity>
-                                )}
-                            </View>
-                        )}
-                        {!isModelReady && (
-                            <Text style={styles.modelRequiredNote}>
-                                Model must be downloaded and loaded for ML-based entity detection
-                            </Text>
-                        )}
-                    </View>
-                )}
+            {/* Model Card */}
+            <View style={styles.section}>
+                <ModelCard
+                    definition={PII_MODEL}
+                    state={modelState}
+                    onDownload={handleDownload}
+                    onInitialize={handleInitialize}
+                    onRedownload={handleRedownload}
+                    showMetadata={true}
+                    compact={false}
+                />
             </View>
 
             {/* Sample Texts */}
