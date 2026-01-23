@@ -390,6 +390,26 @@ export async function waitForModel(timeoutMs = 30000): Promise<void> {
     return;
   }
 
+  // If model is downloaded but not loaded, trigger loading
+  const CoreModule = NativeModules.LocalIntelligenceCore;
+  if (CoreModule) {
+    try {
+      const coreStatusJson = await CoreModule.getModelStatus(PII_MODEL_ID);
+      const coreStatus = JSON.parse(coreStatusJson);
+      if (coreStatus.state === 'ready' && coreStatus.path) {
+        // Model is downloaded, notify native module to load it
+        if (LocalIntelligencePIIModule.notifyModelDownloaded) {
+          LocalIntelligencePIIModule.notifyModelDownloaded(
+            PII_MODEL_ID,
+            coreStatus.path,
+          );
+        }
+      }
+    } catch {
+      // Core module check failed, continue with polling
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const pollInterval = 500; // Poll every 500ms
     let resolved = false;
